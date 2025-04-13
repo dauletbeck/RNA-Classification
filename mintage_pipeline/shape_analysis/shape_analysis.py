@@ -413,7 +413,7 @@ def data_analysis_low_res(input_data, dihedral_data, m, percentage, string_folde
     return [], [], []
 
 
-
+# AGE step
 def pre_clustering(input_data, m, percentage, string_folder, method, q_fold, distance='torus'):
     """
     The pre clustering described in the paper.

@@ -1,1 +1,3 @@
 05.04 -- created this repository to recreate the RNAprecis codebase for my purposes
+
+13.04 -- finally organizing the clean mintage code

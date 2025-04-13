@@ -3,7 +3,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import numpy as np
-import clean_mintage_code.gaussian_mixture_model_1d as gm
+from mintage_pipeline.clustering import gaussian_mixture_model_1d as gm
 from sklearn.mixture import GaussianMixture
 from scipy.stats import chi2
 

@@ -17,31 +17,48 @@ License along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
 or see <http://www.gnu.org/licenses/>.
 """
+# Standard library imports
+import math
 import os
+import sys
 
+# Third-party imports
 import matplotlib
-import matplotlib.pyplot as plt
-
-from clean_mintage_code.PNDS_plot import make_gauss_flex
-from clean_mintage_code.gaussian_modehunting import modehunting_gaussian, mode_test_gaussian
-from clean_mintage_code.cluster_improving import large_cluster_separation
-
 try:
     matplotlib.use('Agg')
 except:
     print('Rerunning')
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as la
-import math, sys
-from PNDS_io import find_files, import_csv, import_lists, export_csv
-from PNDS_plot import (scatter_plots, var_plot, inv_var_plot, residual_plots,
-                       sphere_views, make_circle, colored_scatter_plots,
-                       one_scatter_plot, abs_var_plot, residues_plot, rainbow,
-                       one_two_plot, scatter_plot, circle_shade_plot,
-                       one_sphere_view, linear_1d_plot, plot_thread)
-from PNDS_geometry import RESHify_1D, unRESHify_1D, torus_distances, euclideanize
-from PNDS_PNS import (pns_loop, fold_points, unfold_points, as_matrix)
-from Multiscale_modes import get_quantile, get_modes
+
+# Local/custom imports
+from clustering.cluster_improving import large_cluster_separation
+from clustering.gaussian_modehunting import modehunting_gaussian, mode_test_gaussian
+from multiscale_analysis.Multiscale_modes import get_quantile, get_modes
+from pnds.PNDS_geometry import RESHify_1D, unRESHify_1D, torus_distances, euclideanize
+from pnds.PNDS_io import find_files, import_csv, import_lists, export_csv
+from pnds.PNDS_plot import (
+    scatter_plots,
+    var_plot,
+    inv_var_plot,
+    residual_plots,
+    sphere_views,
+    make_circle,
+    make_gauss_flex,
+    colored_scatter_plots,
+    one_scatter_plot,
+    abs_var_plot,
+    residues_plot,
+    rainbow,
+    one_two_plot,
+    scatter_plot,
+    circle_shade_plot,
+    one_sphere_view,
+    linear_1d_plot,
+    plot_thread
+)
+from pnds.PNDS_PNS import pns_loop, fold_points, unfold_points, as_matrix 
 
 ################################################################################
 ################################   Constants   #################################

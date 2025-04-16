@@ -4,11 +4,11 @@ import numpy as np
 import os
 import fnmatch
 
-from constants import RELEVANT_ATOMS, RELEVANT_ATOMS_BACKBONE_HYDROGEN_ATOMS, RELEVANT_RING_ATOMS, \
+from utils.constants import RELEVANT_ATOMS, RELEVANT_ATOMS_BACKBONE_HYDROGEN_ATOMS, RELEVANT_RING_ATOMS, \
     RELEVANT_RING_ATOMS_HYDROGEN, RELEVANT_OXYGEN_ATOMS, SUGAR_ATOMS, RELEVANT_ATOMS_ONE_RING, \
     RELEVANT_ATOMS_TWO_RING, ONE_RING_BASES, TWO_RING_BASES, BASES
-from data_functions import dihedral
-import Suite_class
+from utils.data_functions import dihedral
+import utils.Suite_class
 
 
 def import_pdb_file(filename, verbose=False, folder_specified=None):

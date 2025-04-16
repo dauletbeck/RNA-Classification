@@ -12,22 +12,22 @@ from scipy.stats import chi2
 from collections import Counter
 
 # from clean_mintage_code import plot_functions
-# from clean_mintage_code.PNDS_PNS import torus_mean_and_var
+from pnds.PNDS_PNS import torus_mean_and_var
 
 
 # import plot_functions
 # from PNDS_PNS import torus_mean_and_var
 
-from mintage_pipeline.utils import plot_functions
-from mintage_pipeline.pnds.PNDS_io import find_files, import_csv, import_lists, export_csv
-from mintage_pipeline.pnds.PNDS_plot import scatter_plots, var_plot, inv_var_plot, residual_plots
+from utils import plot_functions
+from pnds.PNDS_io import find_files, import_csv, import_lists, export_csv
+from pnds.PNDS_plot import scatter_plots, var_plot, inv_var_plot, residual_plots
 
 # from clean_mintage_code.PNDS_RNA_clustering import new_multi_slink
 
 # from clean_mintage_code.shape_analysis import distance_matrix
 # Due to circular import, here the copy:
 # from clean_mintage_code.constants import MARKERS, COLORS_SCATTER
-from constants import MARKERS, COLORS_SCATTER
+from utils.constants import MARKERS, COLORS_SCATTER
 
 def distance_matrix(data, distance='torus'):
     """This function calculates a distance vector that can be used by scipy.cluster.hierarchy's agglomerative clustering
@@ -873,47 +873,47 @@ test_output_folder = './test_cluster_separation_output/'
 if not os.path.exists(test_output_folder):
     os.makedirs(test_output_folder)
 
-# Generate synthetic data for clustering
-cluster1 = np.random.rand(10, 7) * 360  # Cluster of 10 points in 7D space
-cluster2 = np.random.rand(15, 7) * 360  # Cluster of 15 points in 7D space
-cluster3 = np.random.rand(8, 7) * 360   # Cluster of 8 points in 7D space
-clusters = [cluster1, cluster2, cluster3]
-
-# Combine clusters into a dihedral_angles list
-dihedral_angles = np.vstack([cluster1, cluster2, cluster3])
-cluster_indices = [
-    np.arange(0, 10),         # Indices for cluster1
-    np.arange(10, 25),        # Indices for cluster2
-    np.arange(25, 33)         # Indices for cluster3
-]
-
-# Test cluster_merging function
-def test_cluster_merging():
+if __name__ == "__main__":
+    # Generate synthetic data for clustering
+    cluster1 = np.random.rand(10, 7) * 360
+    cluster2 = np.random.rand(15, 7) * 360
+    cluster3 = np.random.rand(8, 7) * 360
+    clusters = [cluster1, cluster2, cluster3]
     
-    merged_clusters = cluster_merging(cluster_indices, dihedral_angles, plot=True)
-    
-    # Display results
-    print("Merged Clusters Output:")
-    for idx, cluster in enumerate(merged_clusters):
-        print(f"Cluster {idx+1}: {cluster}")
+    # Combine clusters into a dihedral_angles list
+    dihedral_angles = np.vstack([cluster1, cluster2, cluster3])
+    cluster_indices = [
+        np.arange(0, 10),         # Indices for cluster1
+        np.arange(10, 25),        # Indices for cluster2
+        np.arange(25, 33)         # Indices for cluster3
+    ]
 
-test_cluster_merging()
+    # Test cluster_merging function
+    def test_cluster_merging():
+        merged_clusters = cluster_merging(cluster_indices, dihedral_angles, plot=True)
+        
+        # Display results
+        print("Merged Clusters Output:")
+        for idx, cluster in enumerate(merged_clusters):
+            print(f"Cluster {idx+1}: {cluster}")
 
-# # Test large_cluster_separation function
-# def test_large_cluster_separation():
-#     from clean_mintage_code import large_cluster_separation  # Import your function
+    test_cluster_merging()
 
-#     # Test with cluster1 for simplicity
-#     cluster_indices, leftover_indices = large_cluster_separation(
-#         cluster1, np.arange(len(cluster1)), plot_names="test_separation_", plot=True
-#     )
-    
-#     print("Large Cluster Separation Output:")
-#     print("Main Cluster Indices:", cluster_indices)
-#     print("Leftover Cluster Indices:", leftover_indices)
+    # # Test large_cluster_separation function
+    # def test_large_cluster_separation():
+    #     from clean_mintage_code import large_cluster_separation  # Import your function
 
-# test_large_cluster_separation()
+    #     # Test with cluster1 for simplicity
+    #     cluster_indices, leftover_indices = large_cluster_separation(
+    #         cluster1, np.arange(len(cluster1)), plot_names="test_separation_", plot=True
+    #     )
+        
+    #     print("Large Cluster Separation Output:")
+    #     print("Main Cluster Indices:", cluster_indices)
+    #     print("Leftover Cluster Indices:", leftover_indices)
+
+    # test_large_cluster_separation()
 
 
-# Check if test output folder has the generated plots for visual confirmation
-print("Test complete. Check", test_output_folder, "for plot outputs.")
+    # Check if test output folder has the generated plots for visual confirmation
+    print("Test complete. Check", test_output_folder, "for plot outputs.")

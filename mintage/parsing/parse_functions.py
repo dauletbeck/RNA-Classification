@@ -5,10 +5,10 @@ are wrapper functions for all main steps described in 'main_work_with_suites.py'
 import os
 import pickle
 
-import parse_pdb_and_create_suites
-import read_base_pairs
-import read_clash_files
-import read_erraser_output
+from parsing import parse_pdb_and_create_suites
+import parsing.read_base_pairs
+import parsing.read_clash_files
+import parsing.read_erraser_output
 import shape_analysis
 
 

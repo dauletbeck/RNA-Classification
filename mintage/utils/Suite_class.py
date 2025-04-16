@@ -1,6 +1,6 @@
 import numpy as np
 import re
-from data_functions import dihedral
+from utils.data_functions import dihedral
 
 
 class Suite:

@@ -30,8 +30,8 @@ from numpy import linalg as la
 from scipy.cluster.hierarchy import dendrogram, fcluster, average, single
 from scipy.spatial.distance import pdist
 
-import plot_functions
-from PNDS_PNS import torus_mean_and_var
+from utils import plot_functions
+from pnds.PNDS_PNS import torus_mean_and_var
 
 
 def distance_matrix(data, distance='torus'):
@@ -326,5 +326,6 @@ def test_cluster_merging():
     for idx, cluster in enumerate(merged_clusters):
         print(f"Cluster {idx+1}: {cluster}")
 
-# Run the test
-test_cluster_merging()
+if __name__ == "__main__":
+    # Run the test only when script is run directly
+    test_cluster_merging()

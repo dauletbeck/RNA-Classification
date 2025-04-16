@@ -20,11 +20,7 @@ from matplotlib import pyplot as plt
 from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import average, fcluster
 
-# ---------------------------------------------------------------------
-# Imports from your codebase (update paths to match your structure)
-# ---------------------------------------------------------------------
-# shape_analysis/shape_analysis.py
-from shape_analysis.shape_analysis import procrustes_analysis
+from shape_analysis import procrustes_analysis
 
 # pnds/PNDS_RNA_clustering.py
 from pnds.PNDS_RNA_clustering import new_multi_slink
@@ -267,19 +263,9 @@ def run_mint_age_pipeline(
 
 
 if __name__ == "__main__":
-    """
-    Example usage when running directly:
-      python mint_age.py path/to/pdb_dir
-    """
-    # import sys
-
-    # if len(sys.argv) < 2:
-    #     print("Usage: python mint_age_pipeline_modular.py <pdb_dir>")
-    #     sys.exit(1)
-
-    # pdb_dir = sys.argv[1]
     pdb_dir = "/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/data/rna2020_pruned_pdbs"
 
+    
     final_suites = run_mint_age_pipeline(
         input_pdb_dir=pdb_dir,
         output_folder="/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/results/mint_age_pipeline",

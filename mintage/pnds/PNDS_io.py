@@ -22,7 +22,7 @@ import numpy as np
 import numpy.linalg as la
 import xml.etree.ElementTree as ET
 import re, os, fnmatch
-from PNDS_tree import Node
+from pnds.PNDS_tree import Node
 from math import pi, sqrt, atan2
 
 ################################################################################

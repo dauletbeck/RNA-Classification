@@ -4,8 +4,8 @@ from scipy.optimize import leastsq
 import scipy.optimize as opt
 import os
 import warnings
-from plot_functions import build_fancy_chain_plot
-from constants import BACKBONE_ATOMS_VALIDATION
+from utils.plot_functions import build_fancy_chain_plot
+from utils.constants import BACKBONE_ATOMS_VALIDATION
 
 
 def dihedral(point_list, verbose=False, rna_distances=True, long=False):

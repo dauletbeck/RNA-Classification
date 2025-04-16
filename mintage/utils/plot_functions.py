@@ -1,6 +1,6 @@
-from auxiliary_plot_functions import *
+from utils.auxiliary_plot_functions import *
 import matplotlib.pyplot as plot
-from constants import COLORS, MARKERS, COLORS_SCATTER
+from utils.constants import COLORS, MARKERS, COLORS_SCATTER
 
 
 def build_fancy_chain_plot(chains, filename=None, **kwargs):

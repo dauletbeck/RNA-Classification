@@ -24,7 +24,7 @@ import numpy.random as arandom
 import scipy.linalg as la
 import itertools as it
 from math import ceil, sqrt, log2
-from PNDS_io import export_csv, import_csv
+from pnds.PNDS_io import export_csv, import_csv
 
 SIZES = [100,200,500,1000,2000]
 MC_COUNT = 10000

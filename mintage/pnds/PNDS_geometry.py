@@ -25,7 +25,7 @@ import scipy.optimize as opt
 import sys, warnings
 from math import sqrt, radians, degrees
 from scipy.stats.mstats import gmean
-from PNDS_PNS import as_matrix
+from pnds.PNDS_PNS import as_matrix
 
 ################################################################################
 ################################   Constants   #################################

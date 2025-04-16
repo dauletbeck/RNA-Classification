@@ -1,30 +1,35 @@
+# Standard library imports
+import collections
+import csv
 import os
 import pickle
 
+# Third-party imports
 import matplotlib.pyplot as plt
-from scipy.cluster.hierarchy import average, fcluster, single, ward, centroid, weighted
-from plot_functions import build_fancy_chain_plot, hist_own_plot, scatter_plots
-import numpy as np
-import csv
-import collections
-import PNDS_RNA_clustering
-from scipy.spatial.distance import pdist, squareform
-from data_functions import procrustes_algorithm_short, mean_on_sphere
-from constants import COLORS, COLORS_SCATTER, mean_shapes_all, MARKERS
-from help_plot_functions import plot_clustering
-from PNDS_PNS import torus_mean_and_var
-
 from matplotlib import pyplot as plot
-from PNDS_PNS import compare_likelihoods
-import scipy.stats as stat
+import numpy as np
+from scipy.cluster.hierarchy import average, fcluster, single, ward, centroid, weighted
 from scipy.optimize import minimize
-import PNDS_PNS
-import multiscale_modes_linear
-import Multiscale_modes
-import PNDS_geometry
+from scipy.spatial.distance import pdist, squareform
+import scipy.stats as stat
 
-from data_functions import procrustes_algorithm_short, mean_on_sphere, rotate_y_optimal_to_x, rotation, \
+# Local/custom imports
+from utils.constants import COLORS, COLORS_SCATTER, mean_shapes_all, MARKERS
+from utils.data_functions import (
+    procrustes_algorithm_short,
+    mean_on_sphere,
+    rotate_y_optimal_to_x,
+    rotation,
     rotation_matrix_x_axis
+)
+from utils.help_plot_functions import plot_clustering
+import multiscale_analysis.multiscale_modes_linear
+import multiscale_analysis.Multiscale_modes
+from utils.plot_functions import build_fancy_chain_plot, hist_own_plot, scatter_plots
+import pnds.PNDS_geometry
+import pnds.PNDS_PNS
+from pnds.PNDS_PNS import compare_likelihoods, torus_mean_and_var
+import pnds.PNDS_RNA_clustering
 
 
 def procrustes_on_suite_class(np_array, string, string_plot, shape=False, mean_shape=None, origin_index=None,
@@ -690,49 +695,6 @@ def loss_projection_on_sphere(p, data):
     return np.sum((y - p[-1]) ** 2)
 
 
-# def project_data_on_sphere(data, no_test=True, string=None, dummy_list=None):
-#     mean_data_start = np.mean(data, axis=0)
-#     start_radius = np.mean(np.abs(mean_data_start - data))
-#     res = minimize(fun=loss_projection_on_sphere,
-#                    x0=np.hstack([mean_data_start, start_radius]),
-#                    method='L-BFGS-B', options={'ftol': 1e-5},
-#                    args=(data))
-
-#     n = data.shape[0]
-#     d = data.shape[1]
-
-#     squared_residuals_fit_sphere = res.fun
-#     chi_sphere = n * np.log(squared_residuals_fit_sphere)
-
-#     pca_ew, pca_ev = np.linalg.eig(np.cov(data.T))
-#     squared_residuals_fit_plane = np.min(pca_ew) * n
-#     chi_plane = n * np.log(squared_residuals_fit_plane)
-
-#     chi2 = 1 - stat.chi2.cdf(chi_plane - chi_sphere, 1)
-
-#     chi_test = chi2 > 0.05
-#     print("radius", res.x[-1])
-#     radii = np.linalg.norm(data - res.x[:-1], axis=1)
-#     # plot.hist(radii)
-#     # plot.savefig("hist_" + str(counter) + ".png")
-#     # plot.close()
-#     likelihood = compare_likelihoods(radii, d, False, euclidean=True)
-#     print("d", d, "likelihood", likelihood, "chi2", chi2)
-
-#     if (not chi_test and not likelihood) or d == 2 or no_test:
-#         data_shifted = data - res.x[:-1]
-#         data_on_sphere = data_shifted / np.linalg.norm(data_shifted, axis=1)[:, np.newaxis]
-#         if d == 2 and string is not None:
-#             plot_two_dimensional_projection(data, data_on_sphere, data_shifted, res, string, dummy_list=dummy_list)
-#         return data_on_sphere
-#     else:
-#         print('test')
-#         order = np.argsort(pca_ew)[::-1]
-#         pca_ev = pca_ev[:, order]
-#         proj = pca_ev[:, :d - 1]
-#         data_d_minus_1 = np.dot(proj.T, data.T).T
-#         return project_data_on_sphere(data_d_minus_1)
-
 def project_data_on_sphere(data, no_test=True, string=None, dummy_list=None):
     mean_data_start = np.mean(data, axis=0)
     start_radius = np.mean(np.abs(mean_data_start - data))
@@ -779,7 +741,6 @@ def project_data_on_sphere(data, no_test=True, string=None, dummy_list=None):
         
         # Recursive call to project lower-dimensional data
         return project_data_on_sphere(data_d_minus_1)
-
 
 
 def plot_two_dimensional_projection(data, data_on_sphere, data_shifted, res, string, dummy_list=None):

@@ -27,7 +27,7 @@ from random import sample
 from mpl_toolkits.mplot3d import Axes3D  # Necessary for 3D plots to work!
 from matplotlib.colors import LinearSegmentedColormap
 from math import sqrt, sin, cos
-from PNDS_geometry import apply_matrix, rotation
+from pnds.PNDS_geometry import apply_matrix, rotation
 
 ################################################################################
 ################################   Constants   #################################

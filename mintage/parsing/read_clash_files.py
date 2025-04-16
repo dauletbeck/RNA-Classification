@@ -4,8 +4,8 @@ import platform
 
 import numpy as np
 
-from parse_pdb_and_create_suites import find_files
-from constants import RNA_BASES_VALIDATION, BACKBONE_ATOMS_VALIDATION
+from parsing.parse_pdb_and_create_suites import find_files
+from utils.constants import RNA_BASES_VALIDATION, BACKBONE_ATOMS_VALIDATION
 
 
 def get_clashes(folder, suites, model_number=False):

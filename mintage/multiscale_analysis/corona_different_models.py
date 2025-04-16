@@ -4,11 +4,11 @@ import numpy as np
 
 import clash_correction
 from clash_correction import create_cluster_list
-from constants import COLORS
-from data_functions import rotate_y_optimal_to_x, procrustes_algorithm_short
-from help_plot_functions import corona_plot_A33_A34, create_corona_plots, single_corona_plots
-from parse_functions import parse_pdb_files, parse_clash_files
-from plot_functions import build_fancy_chain_plot
+from utils.constants import COLORS
+from utils.data_functions import rotate_y_optimal_to_x, procrustes_algorithm_short
+from utils.help_plot_functions import corona_plot_A33_A34, create_corona_plots, single_corona_plots
+from parsing.parse_functions import parse_pdb_files, parse_clash_files
+from utils.plot_functions import build_fancy_chain_plot
 
 
 def working_with_different_models(input_suites):

@@ -6,11 +6,11 @@ import re
 
 from matplotlib import pyplot as plot
 
-import plot_functions
-from constants import COLORS, COLORS_SCATTER
-from plot_functions import build_fancy_chain_plot, scatter_plots, hist_own_plot, scatter_plots_two
+import utils.plot_functions
+from utils.constants import COLORS, COLORS_SCATTER
+from utils.plot_functions import build_fancy_chain_plot, scatter_plots, hist_own_plot, scatter_plots_two
 from collections import Counter
-from PNDS_PNS import torus_mean_and_var
+from pnds.PNDS_PNS import torus_mean_and_var
 
 
 def plot_clustering(suites, cluster_list, name, outlier_list, plot_combinations=False, dihedral_angles_suites=None):

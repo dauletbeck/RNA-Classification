@@ -1,17 +1,17 @@
-import parse_pdb_and_create_suites
-import data_functions
+import parsing.parse_pdb_and_create_suites
+import utils.data_functions
 import shape_analysis
-import plot_functions
-import constants
-from constants import COLORS, COLORS_SCATTER
-import PNDS_RNA_clustering
+import utils.plot_functions
+import utils.constants
+from utils.constants import COLORS, COLORS_SCATTER
+import pnds.PNDS_RNA_clustering
 
 from scipy.cluster.hierarchy import average
 import matplotlib.pyplot as plot
 import numpy as np
 import os
 
-from help_plot_functions import plot_all_clash_suites_before_and_after_ERRASER_correction, \
+from utils.help_plot_functions import plot_all_clash_suites_before_and_after_ERRASER_correction, \
     plot_all_single_clash_suites_before_and_after_correction_by_ERRASER, plot_ERRASER_clustering_results
 
 

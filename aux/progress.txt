@@ -2,6 +2,4 @@
 
 13.04 -- finally organizing the clean mintage code
 
-backtracking the mint-age pipeline:
-
-main_learn_high_res_structure ( cluster_trainings_suites ) -> 
+16.04 -- reconstructed mintage pipeline, still a few bugs with dimensionalities, most likely an input issue

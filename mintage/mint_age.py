@@ -42,7 +42,7 @@ def parse_data(input_pdb_dir):
     Returns a list of 'suite' objects (or similar) extracted from PDBs.
     """
     print("[MINT-AGE] Parsing data from:", input_pdb_dir)
-    suites = parse_pdb_files(input_pdb_dir)
+    suites = parse_pdb_files(input_pdb_dir, input_pdb_folder=input_pdb_dir)
     print(f"Parsed {len(suites)} suite objects.")
     return suites
 
@@ -238,7 +238,7 @@ def run_mint_age_pipeline(
         outlier_percentage=outlier_percentage,
         min_cluster_size=min_cluster_size,
     )
-
+    
     # Step 3: Post-clustering
     refined_clusters = MINT(suites, cluster_list)
 
@@ -247,9 +247,10 @@ def run_mint_age_pipeline(
         final_plot_dir = os.path.join(output_folder, "final_plots")
         print("[MINT-AGE] Plotting final refined clusters...")
         plot_clustering(
-            suite_list=suites,
+            suites=suites,
             cluster_list=refined_clusters,
-            out_dir=final_plot_dir
+            name=final_plot_dir,
+            outlier_list=[]
         )
 
     # Save final results if desired
@@ -263,7 +264,7 @@ def run_mint_age_pipeline(
 
 
 if __name__ == "__main__":
-    pdb_dir = "/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/data/rna2020_pruned_pdbs"
+    pdb_dir = "/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/data/rna2020_pruned_pdbs/"
 
     
     final_suites = run_mint_age_pipeline(

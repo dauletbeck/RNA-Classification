@@ -3,12 +3,16 @@ import platform
 import numpy as np
 import os
 import fnmatch
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils.constants import RELEVANT_ATOMS, RELEVANT_ATOMS_BACKBONE_HYDROGEN_ATOMS, RELEVANT_RING_ATOMS, \
     RELEVANT_RING_ATOMS_HYDROGEN, RELEVANT_OXYGEN_ATOMS, SUGAR_ATOMS, RELEVANT_ATOMS_ONE_RING, \
     RELEVANT_ATOMS_TWO_RING, ONE_RING_BASES, TWO_RING_BASES, BASES
 from utils.data_functions import dihedral
-import utils.Suite_class
+from utils import Suite_class
 
 
 def import_pdb_file(filename, verbose=False, folder_specified=None):
@@ -374,3 +378,7 @@ def get_all_pdb_files(folder):
             data[i + 2].complete_suite = False
 
     return data
+
+if __name__=="__main__":
+    pdb_dir = "/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/data/rna2020_pruned_pdbs/"
+    print(get_all_pdb_files(pdb_dir))

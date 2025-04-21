@@ -419,6 +419,9 @@ def compare_likelihoods(radii, d, verbose,  euclidean=False):
                      np.log(1 + np.exp(- 2. * x[0] * radii / x[1]))) + penalty
         return out
     def likelihood_null(x):
+        # Convert x to scalar if it's an array
+        if hasattr(x, '__len__'):
+            x = x[0]  # Safely extract the first element
         return likelihood(np.array([1, float(x)]))
     mle = opt.minimize(likelihood, np.array([max(mean/std, 1.), std]),
                        method=('L-BFGS-B' if OLD_SCIPY else None),

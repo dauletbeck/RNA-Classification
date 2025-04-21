@@ -1,3 +1,4 @@
 data/*
 results/*
 mintage/test_cluster_merging_output/*
+mintage/out/*

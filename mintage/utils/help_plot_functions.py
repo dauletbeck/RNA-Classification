@@ -25,7 +25,7 @@ def plot_clustering(suites, cluster_list, name, outlier_list, plot_combinations=
     if not os.path.exists(name):
         os.makedirs(name)
     procrustes_data_backbone = np.array([suite.procrustes_complete_suite_vector for suite in suites])
-    procrustes_data = np.array([suite.procrustes_complete_mesoscopic_vector for suite in suites])
+    procrustes_data = np.array([suite.procrustes_complete_mesoscopic_vector for suite in suites], dtype=object)
 
     for i in range(len(cluster_list)):
         build_fancy_chain_plot(procrustes_data[cluster_list[i]], filename=name + 'cluster_nr' + str(i) + '_mesoscopic')

@@ -3,3 +3,5 @@
 13.04 -- finally organizing the clean mintage code
 
 16.04 -- reconstructed mintage pipeline, still a few bugs with dimensionalities, most likely an input issue
+
+21.04 -- mintage runs properly, fixed all input issues. Issues with plotting persist, but was able to reproduce afterwards.

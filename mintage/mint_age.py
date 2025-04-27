@@ -34,6 +34,11 @@ from utils.data_functions import rotate_y_optimal_to_x, rotation_matrix_x_axis
 # parsing/parse_functions.py
 from parsing.parse_functions import parse_pdb_files
 
+from utils.pucker_data_functions import determine_pucker_data, procrustes_for_each_pucker
+from clustering.cluster_improving import cluster_merging
+import shape_analysis
+from pnds import PNDS_RNA_clustering
+
 
 def parse_data(input_pdb_dir):
     """
@@ -205,6 +210,23 @@ def find_outlier_threshold_simple(linkage_matrix, percentage, data_count, min_cl
     return linkage_matrix[-1, 2] + 1.0
 
 
+def filter_suites(suites, pucker_type=None):
+    """
+    Filter suites to match the logic in precluster_pruned.py.
+    Optionally filter by pucker type.
+    """
+    filtered = [
+        s for s in suites
+        if getattr(s, 'procrustes_five_chain_vector', None) is not None
+        and getattr(s, '_dihedral_angles', None) is not None
+        and getattr(s, 'atom_types', None) == 'atm'
+    ]
+    if pucker_type and pucker_type != 'all':
+        # Use determine_pucker_data to further filter by pucker type
+        _, filtered = determine_pucker_data(filtered, pucker_type)
+    return filtered
+
+
 def run_mint_age_pipeline(
     input_pdb_dir,
     output_folder="./out/mint_age_pipeline",
@@ -212,69 +234,112 @@ def run_mint_age_pipeline(
     min_cluster_size=20,
     outlier_percentage=0.15,
     method=average,
-    plot=True
+    plot=True,
+    pucker_types=None,
+    q_fold=0.15
 ):
     """
-    Main assembler function for the entire MINT-AGE pipeline:
-    0) parse_data
-    1) procrustes_step
-    2) AGE pre-clustering step
-    3) MINT post_clustering_step
-    4) optional plotting
+    Main assembler function for the entire MINT-AGE pipeline.
+    Now loops over pucker types and applies filtering and per-pucker Procrustes.
     """
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    if pucker_types is None:
+        pucker_types = ['c3c3', 'c3c2', 'c2c3', 'c2c2', 'all']
+
+    all_results = {}
+
     # Step 0: parse data
     suites = parse_data(input_pdb_dir)
 
-    # Step 1: Procrustes
-    suites = procrustes_step(suites, output_folder, recalculate=recalculate)
+    for pucker in pucker_types:
+        print(f"\n[MINT-AGE] Processing pucker type: {pucker}")
 
-    # Step 2: Pre-clustering
-    cluster_list = AGE(
-        suites,
-        method=method,
-        outlier_percentage=outlier_percentage,
-        min_cluster_size=min_cluster_size,
-    )
-    
-    # Step 3: Post-clustering
-    refined_clusters = MINT(suites, cluster_list)
+        # Step 0.5: Filter suites for this pucker type
+        filtered_suites = filter_suites(suites, pucker_type=pucker)
+        if not filtered_suites:
+            print(f"[MINT-AGE] No suites found for pucker type {pucker}")
+            continue
 
-    # Step 4: (Optional) Plot final clusters
-    if plot:
-        final_plot_dir = os.path.join(output_folder, "final_plots")
-        print("[MINT-AGE] Plotting final refined clusters...")
-        plot_clustering(
-            suites=suites,
-            cluster_list=refined_clusters,
-            name=final_plot_dir,
-            outlier_list=[]
+        # Step 1: Procrustes (per-pucker if not 'all')
+        if pucker != 'all':
+            procrustes_data = np.array([s.procrustes_five_chain_vector for s in filtered_suites])
+            procrustes_data_backbone = np.array([s.procrustes_complete_suite_vector for s in filtered_suites])
+            procrustes_data, procrustes_data_backbone = procrustes_for_each_pucker(
+                filtered_suites, procrustes_data, procrustes_data_backbone, pucker
+            )
+            # Optionally update suite objects with new procrustes data if needed
+        else:
+            filtered_suites = procrustes_step(filtered_suites, output_folder, recalculate=recalculate)
+
+        # Prepare dihedral angles array
+        dihedral_angles_suites = np.array([s._dihedral_angles for s in filtered_suites])
+
+        # --- PRE-CLUSTERING (as in precluster_pruned.py) ---
+        cluster_list, cluster_outlier_list, name_precluster = shape_analysis.pre_clustering(
+            input_data=dihedral_angles_suites,
+            m=min_cluster_size,
+            percentage=outlier_percentage,
+            string_folder=output_folder,
+            method=method,
+            q_fold=q_fold,
+            distance="torus"
         )
 
-    # Save final results if desired
-    final_pickle = os.path.join(output_folder, "mint_age_final_suites.pickle")
-    with open(final_pickle, "wb") as f:
-        pickle.dump(suites, f)
+        # --- POST-CLUSTERING (as in precluster_pruned.py) ---
+        cluster_list_mode, noise1 = PNDS_RNA_clustering.new_multi_slink(
+            scale=12000,
+            data=dihedral_angles_suites,
+            cluster_list=cluster_list,
+            outlier_list=cluster_outlier_list,
+            min_cluster_size=min_cluster_size
+        )
 
-    print(f"[MINT-AGE] Pipeline complete. Saved final suites to {final_pickle}")
-    print(f"[MINT-AGE] Total final clusters: {len(refined_clusters)}")
-    return suites
+        # --- CLUSTER MERGING (optional, as in precluster_pruned.py) ---
+        try:
+            merged_clusters = cluster_merging(cluster_list_mode, dihedral_angles_suites, plot=False)
+        except Exception as e:
+            print(f"[MINT-AGE] cluster_merging failed: {e}")
+            merged_clusters = cluster_list_mode
+
+        # --- PLOTTING (optional) ---
+        if plot:
+            final_plot_dir = os.path.join(output_folder, f"final_plots_{pucker}")
+            print(f"[MINT-AGE] Plotting final refined clusters for {pucker}...")
+            plot_clustering(
+                suites=filtered_suites,
+                cluster_list=merged_clusters,
+                name=final_plot_dir,
+                outlier_list=[]
+            )
+
+        # --- SAVE FINAL RESULTS ---
+        final_pickle = os.path.join(output_folder, f"mint_age_final_suites_{pucker}.pickle")
+        with open(final_pickle, "wb") as f:
+            pickle.dump(filtered_suites, f)
+
+        print(f"[MINT-AGE] Pipeline complete for {pucker}. Saved final suites to {final_pickle}")
+        print(f"[MINT-AGE] Total final clusters: {len(merged_clusters)}")
+        all_results[pucker] = filtered_suites
+
+    return all_results
 
 
 if __name__ == "__main__":
     pdb_dir = "/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/data/rna2020_pruned_pdbs/"
 
-    
+    # Loop over all pucker types as in precluster_pruned.py
     final_suites = run_mint_age_pipeline(
         input_pdb_dir=pdb_dir,
         output_folder="/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/results/mint_age_pipeline",
         recalculate=True,
-        min_cluster_size=20,
-        outlier_percentage=0.15,
+        min_cluster_size=3,
+        outlier_percentage=0.02,
         method=average,
-        plot=True
+        plot=True,
+        pucker_types=['c3c3', 'c3c2', 'c2c3', 'c2c2', 'all'],
+        q_fold=0.05  # or loop over q_fold values as needed
     )
 
     print("[MINT-AGE] Done.")

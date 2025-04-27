@@ -1,7 +1,7 @@
 import numpy as np
 import re
 from utils.data_functions import dihedral
-
+from utils.data_functions import rotation
 
 class Suite:
     def __init__(self, backbone_atoms, backbone_hydrogen_atoms, oxygen_atoms, ring_atoms, ring_hydrogen_atoms,
@@ -20,7 +20,7 @@ class Suite:
         self._ring_atoms = np.array(ring_atoms)
 
         # The low res chains
-        self._five_chain = np.array(five_chain)
+        self._five_chain = np.array(five_chain) # N-C-P-C-N
         self._six_chain = np.array(six_chain)
         self._seven_chain = np.array(seven_chain)
 
@@ -130,13 +130,71 @@ class Suite:
         self.procrustes_seven_chain_rotation = None
         self.procrustes_seven_chain_vector = None
 
-
+        self.low_res_coords = None
+        self.low_res_direction1 = None
+        self.low_res_direction2 = None
 
         self.answer = None
         self.pucker = None
         self.pucker_distance_1 = None
         self.pucker_distance_2 = None
 
+    def low_resolution_coordinates (self):
+        if (not hasattr(self,'low_res_coords') or (self.low_res_coords == None)):
+            deg = 180 / np.pi
+            # Center the P atom
+            NCPCN = self._five_chain - self._five_chain[2][np.newaxis,:]
+            # Get the normal direction to the connecting line between the C atoms
+            long = NCPCN[3] - NCPCN[1]
+            long = long / np.linalg.norm(long)
+            normal = NCPCN[1]
+            normal = normal - np.dot(normal, long) * long
+            normal = normal / np.linalg.norm(normal)
+            # Get the rotation matrix that rotates the normal to the y axis
+            rot1 = rotation(normal, np.array([0, 1, 0]))
+            NCPCN = np.einsum('ij,nj->ni', rot1, NCPCN)
+            # Get the direction of the connecting line between the C atoms
+            long = NCPCN[3] - NCPCN[1]
+            long = long / np.linalg.norm(long)
+            # Get the rotation matrix that rotates the vector to the x axis
+            rot2 = np.array([[long[0], 0, long[2]], [0, 1, 0], [-long[2], 0, long[0]]])
+            NCPCN = np.einsum('ij,nj->ni', rot2, NCPCN)
+            d2_d3 = [np.linalg.norm(NCPCN[1]), np.linalg.norm(NCPCN[3])]
+            alpha = np.arccos(np.dot(NCPCN[1], NCPCN[3]) / (d2_d3[0] * d2_d3[1]))*deg
+            CNs = [NCPCN[0] - NCPCN[1], NCPCN[4] - NCPCN[3]]
+            CNs = [v / np.linalg.norm(v) for v in CNs]
+            self.low_res_direction1 = CNs[0]
+            self.low_res_direction2 = CNs[1]
+            thetas = [np.arccos(v[0])*deg for v in CNs]
+            phis = [np.arctan2(v[1], v[2])*deg for v in CNs]
+            self.low_res_coords = d2_d3 + [alpha, thetas[0], phis[0], thetas[1], phis[1]]
+        return self.low_res_coords.copy()
+
+    def get_NCPs(self):
+        tmp = self._five_chain
+        NCPCNP = self._six_chain
+        NCP1 = NCPCNP[:3] - NCPCNP[1][np.newaxis,:]
+        l1 = NCP1[0] - NCP1[1]
+        l1 = l1/ np.linalg.norm(l1)
+        rot1 = rotation(l1, np.array([-1, 0, 0]))
+        NCP1 = np.einsum('ij,nj->ni', rot1, NCP1)
+        l2 = NCP1[2].copy()
+        l2[0] = 0
+        l2 = l2/ np.linalg.norm(l2)
+        rot2= rotation(l2, np.array([0, 1, 0]))
+        NCP1 = np.einsum('ij,nj->ni', rot2, NCP1)
+        NCP2 = NCPCNP[np.array([4,3,5])] - NCPCNP[3][np.newaxis,:]
+        l1 = NCP2[0] - NCP2[1]
+        l1 = l1/ np.linalg.norm(l1)
+        rot1 = rotation(l1, np.array([-1, 0, 0]))
+        NCP2 = np.einsum('ij,nj->ni', rot1, NCP2)
+        l2 = NCP2[2].copy()
+        l2[0] = 0
+        l2 = l2/ np.linalg.norm(l2)
+        rot2= rotation(l2, np.array([0, 1, 0]))
+        NCP2 = np.einsum('ij,nj->ni', rot2, NCP2)
+        return np.array([[NCP1[0,0], NCP1[2,0], NCP1[2,1]],
+                         [NCP2[0,0], NCP2[2,0], NCP2[2,1]]])
 
     @property
     def backbone_atoms(self):

@@ -1,26 +1,63 @@
-from matplotlib import pyplot as plt
 import numpy as np
-from scipy.optimize import minimize
-import pickle
-import os
-import math
-import pandas as pd
-# import seaborn as sn
-import csv
-import requests
-import re
-from utils import write_files
-from collections import Counter
 
-from utils.data_functions import calculate_angle_3_points, rotation, rotation_matrix_x_axis, rotation_matrix_z_axis, mean_on_sphere_init
-from parsing.parse_functions import parse_pdb_files
-import shape_analysis
+import write_files
+from utils.constants import mean_shapes_all
+from parsing.parse_functions import parse_pdb_files, parse_clash_files, shape_analysis_suites
 from shape_analysis import procrustes_on_suite_class
+
+
+def get_suites_from_pdb(pdb_type='2020', outlier_percentage=0):
+    """
+    :param outlier_percentage: default=0, for RNA 2008: 0.15 in shape analysis
+    :param pdb_type:  default='2020' Richardson Lab RNA data pruned without suite outlier
+    """
+    # old_percentage = 0.15
+    # new_percentage = 0
+    string_folder = './out/saved_suite_lists/'
+    if pdb_type == '2020':
+        # pdb_folder = './rna2020_pruned_pdbs/'
+        pdb_folder = "/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/data/rna2020_pruned_pdbs/"
+    else:
+        pdb_folder = None  # './pdb_data/'
+
+    # Step 1:
+    suites = parse_pdb_files(input_string_folder=string_folder, input_pdb_folder=pdb_folder)
+    # Step 2:
+    suites = parse_clash_files(input_suites=suites, input_string_folder=string_folder)
+    # Step 3:
+    suites = shape_analysis_suites(input_suites=suites, input_string_folder=string_folder,
+                                   outlier_percentage=outlier_percentage,
+                                   min_cluster_size=1, overwrite=False, rerotate=True, old_data=False)
+    print(len(suites))
+    # shape_five_chain(input_suites=suites, input_string_folder='./out/saved_suite_lists/')
+
+    return suites
+
+
+def sort_data_into_cluster(suite_data, cluster_list, min_cluster_length):
+    data_sorted_by_cluster = np.array([])
+    cluster_len_list = []
+
+    for i in range(0, len(cluster_list)):
+        if len(cluster_list[i]) <= min_cluster_length:
+            # print("too long")
+            continue
+        if not data_sorted_by_cluster.any():
+            data_sorted_by_cluster = suite_data[cluster_list[i]]
+            cluster_len_list.append(len(cluster_list[i]))
+            continue
+
+        data_sorted_by_cluster = np.vstack([data_sorted_by_cluster, suite_data[cluster_list[i]]])
+        cluster_len_list.append(len(cluster_list[i]))
+
+    return data_sorted_by_cluster, cluster_len_list
+
 
 def determine_pucker_data(cluster_suites, pucker_name):
     """
     Determines the suites from cluster_suites belonging to sugar pucker pucker_name.
-    :param cluster_suites: The complete list of training suites objects.
+
+    :param cluster_suites: RNA data as list or numpy array (5chains)
     :param pucker_name: 'c2c2', 'c3c3', 'c2c3' or 'c3c2'
     return: pucker indices, pucker suites
     """
@@ -48,20 +85,56 @@ def determine_pucker_data(cluster_suites, pucker_name):
 
     return pucker_index_and_suites[:, 0], pucker_index_and_suites[:, 1]
 
-def procrustes_for_each_pucker(input_suites, pucker_name):
-    """
-    Filters suites by pucker type and returns the procrustes data arrays for the filtered suites.
-    Returns: filtered_suites, procrustes_data, procrustes_data_backbone
-    """
-    # Filter for suites with required attributes
-    cluster_suites = [suite for suite in input_suites if getattr(suite, 'procrustes_five_chain_vector', None) is not None
-                      and getattr(suite, 'dihedral_angles', None) is not None]
-    cluster_suites = [suite for suite in cluster_suites if getattr(suite, 'atom_types', None) == 'atm']
 
-    # Further filter by pucker type
-    _, cluster_suites = determine_pucker_data(cluster_suites, pucker_name)
-    print(f'{pucker_name} suites: {len(cluster_suites)}')
+def procrustes_for_each_pucker(cluster_suites, procrustes_data, procrustes_data_backbone, name_):
+    # procrustes on puckers and then rewrite procrustes data
+    # for LOW RESOLUTION DATA
+    string = './out/procrustes/five_chain_complete_size_shape' + name_ + '.pickle'
+    string_plot = './out/procrustes/five_chain' + name_
 
-    procrustes_data = np.array([suite.procrustes_five_chain_vector for suite in cluster_suites])
-    procrustes_data_backbone = np.array([suite.procrustes_complete_suite_vector for suite in cluster_suites])
-    return cluster_suites, procrustes_data, procrustes_data_backbone
+    # rotate data again for each pucker
+    procrustes_data_pucker = procrustes_on_suite_class(procrustes_data, string, string_plot, origin_index=2,
+                                                       mean_shape=np.array(mean_shapes_all[0]))
+    procrustes_data = np.array([procrustes_data_pucker[0][i] for i in range(len(cluster_suites))])
+
+    # build_fancy_chain_plot(procrustes_data, filename=folder_plots + 'all' + 'test2' + name_,
+    #                       plot_atoms=False, without_legend=True)
+
+    # for HIGH RESOLUTION DATA
+    string = './out/procrustes/suites_complete_size_shape' + name_ + '.pickle'
+    string_plot = './out/procrustes/suites' + name_
+
+    procrustes_data_backbone_pucker = procrustes_on_suite_class(procrustes_data_backbone, string, string_plot,
+                                                                mean_shape=np.array(mean_shapes_all[2]))
+    procrustes_data_backbone = np.array([procrustes_data_backbone_pucker[0][i] for i in range(len(cluster_suites))])
+
+    # build_fancy_chain_plot(procrustes_data_backbone, filename=folder_plots + 'all' + '_six_chain_' + name_,
+    #                       plot_atoms=False, without_legend=True)
+
+    return procrustes_data, procrustes_data_backbone
+
+
+def create_csv(cluster_suites, cluster_list_mode, name_):
+    # not needed:
+    cluster_data_for_csv_pdbid = [[cluster_suites[i]._filename for i in cluster_list_mode[cluster_index]] for
+                                  cluster_index in range(len(cluster_list_mode))]
+    # cluster_data_for_csv[0] = vom 1. Cluster die namen
+    cluster_data_for_csv_chain = [[cluster_suites[i]._name_chain for i in cluster_list_mode[cluster_index]] for
+                                  cluster_index in range(len(cluster_list_mode))]
+    cluster_data_for_csv_residue_num = [
+        [cluster_suites[i]._number_second_residue for i in cluster_list_mode[cluster_index]] for
+        cluster_index in range(len(cluster_list_mode))]
+
+    # create list for csv:
+    cluster_data_for_csv_together = [
+        [[cluster_suites[i]._filename, cluster_suites[i]._name_chain, cluster_suites[i]._number_second_residue,
+          cluster_index + 1]
+         for i in cluster_list_mode[cluster_index]] for cluster_index in range(len(cluster_list_mode))]
+
+    cluster_data_for_csv_ready = cluster_data_for_csv_together[0]
+    for c in range(1, len(cluster_list_mode)):
+        cluster_data_for_csv_ready = np.vstack([cluster_data_for_csv_ready, cluster_data_for_csv_together[c]])
+
+    # cluster_data_for_csv_together = [np.append(np.append(cluster_data_for_csv_pdbid[i], cluster_data_for_csv_chain[i])]
+
+    write_files.write_csv(cluster_data_for_csv_ready, path="./tmp/" + name_)

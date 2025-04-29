@@ -4,11 +4,10 @@ import sys
 import numpy as np
 from scipy.cluster.hierarchy import average
 
-sys.path.append('./clean_mintage_code/')
 from utils import write_files
 # from R_lab_clustering import create_R_csv
-# from plot_clusters import plot_all_cluster_combinations, plot_low_res
-from pucker_data_functions import get_suites_from_pdb, determine_pucker_data, procrustes_for_each_pucker, \
+from utils.plot_clusters import plot_all_cluster_combinations, plot_low_res
+from utils.pucker_data_functions import get_suites_from_pdb, determine_pucker_data, procrustes_for_each_pucker, \
     sort_data_into_cluster, create_csv
 
 # from clean_mintage_code import shape_analysis, plot_functions, PNDS_RNA_clustering
@@ -16,11 +15,6 @@ import shape_analysis
 from utils import plot_functions
 from pnds import PNDS_RNA_clustering
 from clustering.cluster_improving import cluster_merging
-
-cwd = os.getcwd()
-new_wd = os.path.join(cwd, "clean_mintage_code")
-os.chdir(new_wd)
-sys.path.append(cwd)
 
 suites = get_suites_from_pdb()
 input_suites = suites[::]
@@ -175,15 +169,15 @@ def cluster_pruned_rna(name_, min_cluster_size=20, max_outlier_dist_percent=0.15
     # -------- EXTRA PLOTS -------------
     extra_plots = False
 
-    # if extra_plots:
-        # plot_all_cluster_combinations(dihedral_angles_suites, cluster_list, folder_plots, name_, q_fold,
-        #                               max_outlier_dist_percent, mode=False)
+    if extra_plots:
+        plot_all_cluster_combinations(dihedral_angles_suites, cluster_list, folder_plots, name_, q_fold,
+                                      max_outlier_dist_percent, mode=False)
 
-        # plot_all_cluster_combinations(dihedral_angles_suites, cluster_list_mode, folder_plots, name_, q_fold,
-        #                               max_outlier_dist_percent, mode=True)
+        plot_all_cluster_combinations(dihedral_angles_suites, cluster_list_mode, folder_plots, name_, q_fold,
+                                      max_outlier_dist_percent, mode=True)
 
-        # plot_all_cluster_combinations(dihedral_angles_suites, cluster_list_merged, folder_plots, name_ + "_merged",
-        #                               q_fold, max_outlier_dist_percent, mode=True)
+        plot_all_cluster_combinations(dihedral_angles_suites, cluster_list_merged, folder_plots, name_ + "_merged",
+                                      q_fold, max_outlier_dist_percent, mode=True)
 
     # -------- plot low resolution data for clustered high resolution ---------------
     plot_string = "_mode_outlier" + str(max_outlier_dist_percent) + "_qfold" + str(q_fold)

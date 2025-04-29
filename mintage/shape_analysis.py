@@ -29,7 +29,7 @@ from utils.plot_functions import build_fancy_chain_plot, hist_own_plot, scatter_
 import pnds.PNDS_geometry
 import pnds.PNDS_PNS
 from pnds.PNDS_PNS import compare_likelihoods, torus_mean_and_var
-import pnds.PNDS_RNA_clustering
+from pnds import PNDS_RNA_clustering
 
 
 def procrustes_on_suite_class(np_array, string, string_plot, shape=False, mean_shape=None, origin_index=None,

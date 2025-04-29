@@ -5,3 +5,5 @@
 16.04 -- reconstructed mintage pipeline, still a few bugs with dimensionalities, most likely an input issue
 
 21.04 -- mintage runs properly, fixed all input issues. Issues with plotting persist, but was able to reproduce afterwards.
+
+29.04 -- using Franzisca's scripts to reproduce results, finally mintage runs. A couple of assessment steps and we're ready to start low-res classification

@@ -87,7 +87,7 @@ def help_chain_plot_legend_and_axis(chains, diag, **kwargs):
     if 'without_legend' not in kwargs:
         leg = diag.legend(loc='upper center', fontsize='small')
         # set the linewidth of each legend object
-        for legobj in leg.legendHandles:
+        for legobj in leg.legend_handles:
             legobj.set_linewidth(2.0)
             legobj.set_alpha(1)
 

@@ -1,6 +1,6 @@
 import numpy as np
 
-import write_files
+from utils import write_files
 from utils.constants import mean_shapes_all
 from parsing.parse_functions import parse_pdb_files, parse_clash_files, shape_analysis_suites
 from shape_analysis import procrustes_on_suite_class

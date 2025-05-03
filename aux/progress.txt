@@ -7,3 +7,5 @@
 21.04 -- mintage runs properly, fixed all input issues. Issues with plotting persist, but was able to reproduce afterwards.
 
 29.04 -- using Franzisca's scripts to reproduce results, finally mintage runs. A couple of assessment steps and we're ready to start low-res classification
+
+03.05 -- starting working with low res data, initial progress on rescaling variance for multicenter polysphere coordinates, derived scaling factors.

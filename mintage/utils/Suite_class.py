@@ -139,7 +139,7 @@ class Suite:
         self.pucker_distance_1 = None
         self.pucker_distance_2 = None
 
-    def low_resolution_coordinates (self):
+    def low_resolution_coordinates(self):
         if (not hasattr(self,'low_res_coords') or (self.low_res_coords == None)):
             deg = 180 / np.pi
             # Center the P atom

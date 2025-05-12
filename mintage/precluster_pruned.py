@@ -1,237 +1,183 @@
 import os
-import sys
+from pathlib import Path
+from typing import List, Tuple, Optional
 
 import numpy as np
-from scipy.cluster.hierarchy import average
+from scipy.cluster.hierarchy import average as average_linkage
 
 from utils import write_files
-# from R_lab_clustering import create_R_csv
 from utils.plot_clusters import plot_all_cluster_combinations, plot_low_res
-from utils.pucker_data_functions import get_suites_from_pdb, determine_pucker_data, procrustes_for_each_pucker, \
-    sort_data_into_cluster, create_csv
-
-# from clean_mintage_code import shape_analysis, plot_functions, PNDS_RNA_clustering
+from utils.pucker_data_functions import (
+    get_suites_from_pdb,
+    determine_pucker_data,
+    procrustes_for_each_pucker,
+    sort_data_into_cluster,
+    create_csv,
+)
 import shape_analysis
 from utils import plot_functions
 from pnds import PNDS_RNA_clustering
 from clustering.cluster_improving import cluster_merging
 
-suites = get_suites_from_pdb()
-input_suites = suites[::]
-
-folder = './out/newdata_without_hets_11_23/'
-if not os.path.exists(folder):
-    os.makedirs(folder)
+# Constants
+OUTPUT_DIR = Path("./out/newdata_without_hets_11_23")
+PICKLE_DIR = Path("./out/saved_suite_lists")
 
 
-# function for Clustering ##################################################################################
+def ensure_dir(path: Path) -> None:
+    """Create directory if it does not exist."""
+    path.mkdir(parents=True, exist_ok=True)
 
-def cluster_pruned_rna(name_, min_cluster_size=20, max_outlier_dist_percent=0.15, q_fold=0.15, do_clustering=True):
-    folder_plots = folder
-    if not os.path.exists(folder_plots):
-        os.makedirs(folder_plots)
 
-    method_cluster = average
+def cluster_pruned_rna(
+    name: str,
+    min_cluster_size: int = 20,
+    max_outlier_dist_percent: float = 0.15,
+    q_fold: float = 0.15,
+    do_clustering: bool = True,
+) -> None:
+    """
+    Perform hierarchical clustering on RNA pucker data and generate plots.
 
-    # cluster_suites = [suite for suite in input_suites if suite.complete_suite]
-    cluster_suites = [suite for suite in input_suites if suite.procrustes_five_chain_vector is not None
-                      and suite.dihedral_angles is not None]
-    # type atm to get only pdb ATM not heteroatoms
-    cluster_suites = [suite for suite in cluster_suites if suite.atom_types == 'atm']
-    print(f'semi-complete suites: {len(cluster_suites)}')
+    Args:
+        name: Identifier for the pucker subset (e.g., 'all', 'c3c3').
+        min_cluster_size: Minimum number of points in a valid cluster.
+        max_outlier_dist_percent: Threshold for outlier distance.
+        q_fold: Quantile threshold for clustering.
+        do_clustering: Whether to compute clusters or load existing ones.
+    """
+    # Prepare output directories
+    folder_plots = OUTPUT_DIR
+    ensure_dir(folder_plots)
 
-    _, cluster_suites = determine_pucker_data(cluster_suites, name_)
-    print(f'{name_} suites: {len(cluster_suites)}')
-    dihedral_angles_suites = np.array([suite.dihedral_angles for suite in cluster_suites])
+    # Load and filter suites
+    suites = get_suites_from_pdb()
+    filtered = [s for s in suites
+                if s.procrustes_five_chain_vector is not None
+                and s.dihedral_angles is not None
+                and s.atom_types == 'atm']
+    print(f"semi-complete suites: {len(filtered)}")
 
-    # ---------- Procrustes ---------------------
-    # data rotated with Procrustes for WHOLE dataset
-    procrustes_data = np.array([suite.procrustes_five_chain_vector for suite in cluster_suites])
-    procrustes_data_backbone = np.array([suite.procrustes_complete_suite_vector for suite in cluster_suites])
+    # Compute pucker-specific data
+    _, filtered = determine_pucker_data(filtered, name)
+    print(f"{name} suites: {len(filtered)}")
 
-    # build_fancy_chain_plot(procrustes_data, filename=folder_plots + 'all' + 'test1' + name_,
-    #                       plot_atoms=False, without_legend=True)
+    dihedral_angles = np.array([s.dihedral_angles for s in filtered])
+    procrustes_full = np.array([s.procrustes_five_chain_vector for s in filtered])
+    procrustes_backbone = np.array([s.procrustes_complete_suite_vector for s in filtered])
 
-    if len(procrustes_data) == 0:
-        print("no data for pucker" + name_)
+    if procrustes_full.size == 0:
+        print(f"No data for pucker '{name}'")
         return
 
-    # procrustes on puckers and then rewrite procrustes data
-    # for LOW RESOLUTION DATA
-    if name_ != 'all':
-        # rotate data again for the specific pucker
-        procrustes_data, procrustes_data_backbone = procrustes_for_each_pucker(cluster_suites, procrustes_data,
-                                                                               procrustes_data_backbone, name_)
+    if name != 'all':
+        procrustes_full, procrustes_backbone = procrustes_for_each_pucker(
+            filtered, procrustes_full, procrustes_backbone, name
+        )
 
-    # ----------------- CLUSTERING --------------
-    # test if we have cluster data saved
-    if not os.path.exists("./out/saved_suite_lists/cluster_indices_mode_" + name_ + "_qfold" + str(q_fold) + ".pickle"):
-        do_clustering = True
-    if not os.path.exists("./out/saved_suite_lists/cluster_indices_" + name_ + "_qfold" + str(q_fold) + ".pickle"):
+    # Determine pickle paths
+    pickle_base = PICKLE_DIR / f"cluster_indices_{name}_qfold{q_fold}"
+    pickle_mode = PICKLE_DIR / f"cluster_indices_mode_{name}_qfold{q_fold}"
+    ensure_dir(PICKLE_DIR)
+
+    # Decide whether to run clustering
+    if not do_clustering or not (pickle_base.with_suffix('.pickle').exists() and pickle_mode.with_suffix('.pickle').exists()):
         do_clustering = True
 
     if do_clustering:
-        # ----------- Step 1: PRE-CLUSTER -----------------------------
-        cluster_list, cluster_outlier_list, name_precluster = shape_analysis.pre_clustering(
-            input_data=dihedral_angles_suites, m=min_cluster_size,
+        # Step 1: Pre-clustering
+        clusters, outliers, _ = shape_analysis.pre_clustering(
+            input_data=dihedral_angles,
+            m=min_cluster_size,
             percentage=max_outlier_dist_percent,
-            string_folder=folder_plots,
-            method=method_cluster,
-            q_fold=q_fold, distance="torus")
+            string_folder=str(folder_plots),
+            method=average_linkage,
+            q_fold=q_fold,
+            distance="torus",
+        )
 
-        cluster_list_sorted = cluster_list
-        cluster_len_list = [len(cluster) for cluster in cluster_list_sorted]
-        cluster_data, cluster_len_list2 = sort_data_into_cluster(dihedral_angles_suites, cluster_list_sorted,
-                                                                 min_cluster_size)
-        cluster_data_procrust, _ = sort_data_into_cluster(procrustes_data, cluster_list_sorted,
-                                                          min_cluster_size)
-        cluster_data_procrust_sixchain, _ = sort_data_into_cluster(procrustes_data_backbone, cluster_list_sorted,
-                                                                   min_cluster_size)
+        # Sort and plot pre-clusters
+        sorted_clusters = clusters
+        cluster_sizes = [len(c) for c in sorted_clusters]
+        data_by_cluster, _ = sort_data_into_cluster(dihedral_angles, sorted_clusters, min_cluster_size)
+        proc_by_cluster, _ = sort_data_into_cluster(procrustes_full, sorted_clusters, min_cluster_size)
+        back_by_cluster, _ = sort_data_into_cluster(procrustes_backbone, sorted_clusters, min_cluster_size)
 
-        if not os.path.exists(folder_plots + name_ + "/"):
-            os.makedirs(folder_plots + name_ + "/")
-        folder_plots_qfold = folder_plots + name_ + "/" + str(q_fold) + "/"
-        if not os.path.exists(folder_plots_qfold):
-            os.makedirs(folder_plots_qfold)
-        plot_functions.my_scatter_plots(cluster_data,
-                                        folder_plots_qfold + name_ + "_outlier" + str(max_outlier_dist_percent)
-                                        + "_qfold" + str(q_fold),
-                                        set_title="dihedral angles suites" + name_,
-                                        number_of_elements=cluster_len_list, legend=True, s=30,
-                                        legend_with_clustersize=True)
+        # Plot dihedral clusters
+        qfold_dir = OUTPUT_DIR / name / str(q_fold)
+        ensure_dir(qfold_dir)
+        plot_functions.my_scatter_plots(
+            data_by_cluster,
+            filename=str(qfold_dir / f"{name}_outlier{max_outlier_dist_percent}_qfold{q_fold}"),
+            set_title=f"dihedral angles suites {name}",
+            number_of_elements=cluster_sizes,
+            legend=True,
+            s=30,
+            legend_with_clustersize=True,
+        )
 
-        # raw plot of all data points
-        # plot_functions.my_scatter_plots(dihedral_angles_suites,
-        #                                folder_plots + name_ + "/" + "scatter_plot_raw",
-        #                                set_title="dihedral angles suites" + name_,
-        #                                suite_titles=[r'$\delta_{1}$', r'$\epsilon$', r'$\zeta$', r'$\alpha$',
-        #                                              r'$\beta$', r'$\gamma$', r'$\delta_{2}$'],
-        #                                number_of_elements=[len(dihedral_angles_suites)],
-        #                                legend=True, s=30)
+        # Step 2: Mode hunting & PCA clustering
+        mode_clusters, _ = PNDS_RNA_clustering.new_multi_slink(
+            scale=12000,
+            data=dihedral_angles,
+            cluster_list=clusters,
+            outlier_list=outliers,
+            min_cluster_size=min_cluster_size,
+        )
+        mode_sizes = [len(c) for c in mode_clusters]
+        stacked = np.vstack([dihedral_angles[c] for c in mode_clusters])
+        plot_functions.my_scatter_plots(
+            stacked,
+            filename=str(qfold_dir / f"{name}_mode_outlier{max_outlier_dist_percent}_qfold{q_fold}"),
+            set_title=f"dihedral angles suites {name}",
+            number_of_elements=mode_sizes,
+            legend=True,
+            s=45,
+            legend_with_clustersize=True,
+        )
 
-        # plot low resolution data for clustered high resolution
-        plot_str = "_outlier" + str(max_outlier_dist_percent) + "_qfold" + str(q_fold)
-        # plot_low_res(cluster_list, procrustes_data, procrustes_data_backbone, name_, plot_str, folder_plots_qfold)
-
-        # ------ Step 2: sing Mode Hunting and Torus PCA to post cluster the data. --------------
-        cluster_list_mode, noise1 = PNDS_RNA_clustering.new_multi_slink(scale=12000, data=dihedral_angles_suites,
-                                                                        cluster_list=cluster_list,
-                                                                        outlier_list=cluster_outlier_list,
-                                                                        min_cluster_size=min_cluster_size)
-
-        cluster_len_list = [len(cluster) for cluster in cluster_list_mode]
-        data_to_plot = np.vstack([dihedral_angles_suites[cluster] for cluster in cluster_list_mode])
-        plot_functions.my_scatter_plots(data_to_plot,
-                                        filename=folder_plots_qfold + name_ + "_mode" + "_outlier"
-                                                 + str(max_outlier_dist_percent) + "_qfold" + str(q_fold),
-                                        set_title="dihedral angles suites" + name_,
-                                        number_of_elements=cluster_len_list, legend=True, s=45,
-                                        legend_with_clustersize=True)
-
-        # save cluster data
-        write_files.write_data_to_pickle(cluster_list_mode,
-                                         "./out/saved_suite_lists/cluster_indices_mode_" + name_ + "_qfold" + str(
-                                             q_fold))
-        write_files.write_data_to_pickle(cluster_list,
-                                         "./out/saved_suite_lists/cluster_indices_" + name_ + "_qfold" + str(q_fold))
+        # Save cluster indices
+        write_files.write_data_to_pickle(mode_clusters, str(pickle_mode))
+        write_files.write_data_to_pickle(clusters, str(pickle_base))
 
     else:
-        # read cluster  data
-        cluster_list_mode = write_files.read_data_from_pickle(
-            "./out/saved_suite_lists/cluster_indices_mode_" + name_ + "_qfold" + str(q_fold))
-        cluster_list = write_files.read_data_from_pickle(
-            "./out/saved_suite_lists/cluster_indices_" + name_ + "_qfold" + str(q_fold))
+        mode_clusters = write_files.read_data_from_pickle(str(pickle_mode))
+        clusters = write_files.read_data_from_pickle(str(pickle_base))
 
-    # cluster1 = dihedral_angles_suites[cluster_list_mode[0]]
-    # large_cluster_separation(cluster1)
+    # Step 3: Cluster merging
+    merged = cluster_merging(mode_clusters, dihedral_angles, plot=False)
+    merged_sizes = [len(c) for c in merged]
+    merged_data = np.vstack([dihedral_angles[c] for c in merged])
+    plot_functions.my_scatter_plots(
+        merged_data,
+        filename=str(qfold_dir / f"{name}_mode_merged_outlier{max_outlier_dist_percent}_qfold{q_fold}"),
+        set_title=f"dihedral angles suites {name}",
+        number_of_elements=merged_sizes,
+        legend=True,
+        s=45,
+        legend_with_clustersize=True,
+    )
 
-    # ---------------------- CLUSTER MERGING -----------------------------
-    if not os.path.exists(folder_plots + name_ + "/"):
-        os.makedirs(folder_plots + name_ + "/")
-    folder_plots_qfold = folder_plots + name_ + "/" + str(q_fold) + "/"
-    if not os.path.exists(folder_plots_qfold):
-        os.makedirs(folder_plots_qfold)
-    cluster_list_merged = cluster_merging(cluster_list_mode, dihedral_angles_suites, plot=False)
-    cluster_len_list_merged = [len(cluster) for cluster in cluster_list_merged]
-    data_to_plot_merged = np.vstack([dihedral_angles_suites[cluster] for cluster in cluster_list_merged])
-    # plot_RichardsonClusters(cluster_suites, name_, folder_plots_qfold)
-    # create_R_csv(cluster_suites, cluster_list_merged, name_)
-    plot_functions.my_scatter_plots(data_to_plot_merged,
-                                    filename=folder_plots_qfold + name_ + "_mode_merged" + "_outlier"
-                                             + str(max_outlier_dist_percent) + "_qfold" + str(q_fold),
-                                    set_title="dihedral angles suites" + name_,
-                                    number_of_elements=cluster_len_list_merged, legend=True, s=45,
-                                    legend_with_clustersize=True)
-
-    # FINAL CLUSTERS:
-    # cluster_list_merged
-
-    # -------- EXTRA PLOTS -------------
-    extra_plots = False
-
-    if extra_plots:
-        plot_all_cluster_combinations(dihedral_angles_suites, cluster_list, folder_plots, name_, q_fold,
-                                      max_outlier_dist_percent, mode=False)
-
-        plot_all_cluster_combinations(dihedral_angles_suites, cluster_list_mode, folder_plots, name_, q_fold,
-                                      max_outlier_dist_percent, mode=True)
-
-        plot_all_cluster_combinations(dihedral_angles_suites, cluster_list_merged, folder_plots, name_ + "_merged",
-                                      q_fold, max_outlier_dist_percent, mode=True)
-
-    # -------- plot low resolution data for clustered high resolution ---------------
-    plot_string = "_mode_outlier" + str(max_outlier_dist_percent) + "_qfold" + str(q_fold)
-    # plot_low_res(cluster_list_mode, procrustes_data, procrustes_data_backbone, name_, folder_plots= folder_plots_qfold,
-    #             plot_string=plot_string)
-
-    # ----------- create csv ---------------------
-    # create_csv(cluster_suites, cluster_list_mode, name_)
-
-    # ---------- R Clustering ---------------------
-    # plot_RichardsonClusters(cluster_suites, name_, folder_plots_qfold)
-    # get_R_Clusters(cluster_suites, name_)
-    # write_files.get_Richardsons_suitenames(cluster_suites, cluster_list_merged,
-    # "./cluster_data/c3c2_cluster_suite_comparison_2023oct.csv")
+    # Optional extra plots
+    # plot_all_cluster_combinations(dihedral_angles, clusters, folder_plots, name, q_fold, max_outlier_dist_percent, mode=False)
+    # plot_low_res(clusters, procrustes_full, procrustes_backbone, name, f"_mode_outlier{max_outlier_dist_percent}_qfold{q_fold}", folder_plots=qfold_dir)
+    # create_csv(filtered, merged, name)
 
 
-# ---------------- MAIN  -------------------------
-# names = ['c_3_c_3_suites', 'c_3_c_2_suites', 'c_2_c_3_suites', 'c_2_c_2_suites', 'all']
-names = ['c3c3', 'c3c2', 'c2c3', 'c2c2', 'all']
-
-#  -------- All Pucker - not up-to-date ------------
-# min_cluster_size = 10
-# max_outlier = 0.2
-# q_fold = 0.05
-# cluster_pruned_rna(names[4], min_cluster_size=min_cluster_size, max_outlier_dist_percent=max_outlier, q_fold=q_fold)
-# q_fold = 0.07
-# cluster_pruned_rna(names[4], min_cluster_size=min_cluster_size, max_outlier_dist_percent=max_outlier, q_fold=q_fold)
-# q_fold = 0.10
-# cluster_pruned_rna(names[4], min_cluster_size=min_cluster_size, max_outlier_dist_percent=max_outlier, q_fold=q_fold)
-
-# ---------- Pucker Clustering ------------------
-min_cluster_size = 3
-
-# ---------- C2'-C2' Pucker ---------------------
-max_outlier = 0.02
-q_fold = 0.05
-cluster_pruned_rna(names[3], min_cluster_size=min_cluster_size, max_outlier_dist_percent=max_outlier, q_fold=q_fold,
-                       do_clustering=True)
-
-# ---------- C2'-C3' Pucker ---------------------
-max_outlier = 0.02
-q_fold = 0.07
-cluster_pruned_rna(names[2], min_cluster_size=min_cluster_size, max_outlier_dist_percent=max_outlier, q_fold=q_fold,
-                      do_clustering=True)
-
-# ---------- C3'-C2' Pucker ---------------------
-max_outlier = 0.02
-q_fold = 0.05
-cluster_pruned_rna(names[1], min_cluster_size=min_cluster_size, max_outlier_dist_percent=max_outlier, q_fold=q_fold,
-                      do_clustering=True)
-
-# ---------- C3'-C3' Pucker ---------------------
-max_outlier = 0.02
-# q_fold = 0.078
-q_fold = 0.090
-cluster_pruned_rna(names[0], min_cluster_size=min_cluster_size, max_outlier_dist_percent=max_outlier,
-                      q_fold=q_fold, do_clustering=True)
+if __name__ == "__main__":
+    names = ['c3c3', 'c3c2', 'c2c3', 'c2c2', 'all']
+    min_size = 3
+    configurations = [
+        ('c2c2', 0.02, 0.05),
+        ('c2c3', 0.02, 0.07),
+        ('c3c2', 0.02, 0.05),
+        ('c3c3', 0.02, 0.09),
+    ]
+    for name, outlier, qf in configurations:
+        cluster_pruned_rna(
+            name,
+            min_cluster_size=min_size,
+            max_outlier_dist_percent=outlier,
+            q_fold=qf,
+            do_clustering=True,
+        )

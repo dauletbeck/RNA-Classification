@@ -459,3 +459,14 @@ def rotate_y_optimal_to_x(x, y, return_rotation=False):
         return a
     else:
         return a, rotation_matrix
+
+def spherical_to_vec(theta_deg: np.ndarray, phi_deg: np.ndarray) -> np.ndarray:
+    t, p = np.radians(theta_deg), np.radians(phi_deg)
+    return np.column_stack([np.sin(t) * np.cos(p),
+                            np.sin(t) * np.sin(p),
+                            np.cos(t)])
+
+def arc_distance(a: np.ndarray, b: float) -> np.ndarray:
+    """Shortest signed arc distance between vectors of angles a and scalar b (radians)."""
+    d = (a - b + np.pi) % (2 * np.pi) - np.pi
+    return d

@@ -193,6 +193,7 @@ class Suite:
         l2 = l2/ np.linalg.norm(l2)
         rot2= rotation(l2, np.array([0, 1, 0]))
         NCP2 = np.einsum('ij,nj->ni', rot2, NCP2)
+        # last column is the sugar pucker
         return np.array([[NCP1[0,0], NCP1[2,0], NCP1[2,1]],
                          [NCP2[0,0], NCP2[2,0], NCP2[2,1]]])
 

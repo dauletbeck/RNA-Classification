@@ -78,34 +78,34 @@ def unRESHify_1D (data, angles, half):
 def RESHify (sphere1, sphere2, colors, with_plots=False):
     return full_RESHify([sphere1, sphere2], colors, with_plots)
 
-def full_RESHify_old (spheres, colors, verbose=False, with_plots=False):
-    sphere_list = []
-    var_list = []
-    for s in spheres:
-        mean, var = mean_on_sphere(s, verbose)
-        x_axis = np.zeros(len(mean))
-        x_axis[0] = 1
-        rot = rotation(mean, x_axis)
-        new_s = np.einsum('ij,kj->ik', s, rot)
-        if with_plots:
-#            RESH_plot.sphere_plot(new_s, colors)
-            pass
-        sphere_list.append(new_s)
-        var_list.append(var)
-    sphere_list = np.array(sphere_list)
-    var_list = np.array(var_list)
-    sphere_list = [x for x in sphere_list[var_list.argsort()[::-1]]]
-    n = len(sphere_list)
-    inner = sphere_list[0]
-    for step in range(1,n):
-        outer = sphere_list[step]
-        factor = sqrt(np.mean(outer[:,0]**2))
-        inner = np.hstack((factor * outer[:,1:],
-                           np.einsum('i,ij->ij', outer[:,0], inner)))
-        inner = np.einsum('ij,i->ij', inner, 1/la.norm(inner, axis=1))
-#    for x in sphere_list:
-#        RESH_plot.sphere_plot(x, colors)
-    return inner
+# def full_RESHify_old (spheres, colors, verbose=False, with_plots=False):
+#     sphere_list = []
+#     var_list = []
+#     for s in spheres:
+#         mean, var = mean_on_sphere(s, verbose)
+#         x_axis = np.zeros(len(mean))
+#         x_axis[0] = 1
+#         rot = rotation(mean, x_axis)
+#         new_s = np.einsum('ij,kj->ik', s, rot)
+#         if with_plots:
+# #            RESH_plot.sphere_plot(new_s, colors)
+#             pass
+#         sphere_list.append(new_s)
+#         var_list.append(var)
+#     sphere_list = np.array(sphere_list)
+#     var_list = np.array(var_list)
+#     sphere_list = [x for x in sphere_list[var_list.argsort()[::-1]]]
+#     n = len(sphere_list)
+#     inner = sphere_list[0]
+#     for step in range(1,n):
+#         outer = sphere_list[step]
+#         factor = sqrt(np.mean(outer[:,0]**2))
+#         inner = np.hstack((factor * outer[:,1:],
+#                            np.einsum('i,ij->ij', outer[:,0], inner)))
+#         inner = np.einsum('ij,i->ij', inner, 1/la.norm(inner, axis=1))
+# #    for x in sphere_list:
+# #        RESH_plot.sphere_plot(x, colors)
+#     return inner
 
 def full_RESHify (spheres, colors, with_plots=False):
     return RESHify_with_radii(spheres, np.ones(len(spheres)), colors, with_plots)

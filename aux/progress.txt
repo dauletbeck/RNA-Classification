@@ -13,3 +13,5 @@
 12.05 -- applying exponential map to distances, obtaining S^7
 
 15.05 -- organizational changes, moved to scaling low res to a separate script
+
+03.06 -- updating the rna clustering function, moving forward with the pipeline

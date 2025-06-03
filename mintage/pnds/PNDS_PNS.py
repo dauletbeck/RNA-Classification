@@ -114,13 +114,13 @@ def __new_seed (old, d):
     return out
 
 def __get_functions (points, list_spheres, half, verbose):
-    def f(x):
+    def f(x): # small sphere
         norm_x = la.norm(x)
         angles = np.arcsin(np.einsum('ij,j->i', points, x / norm_x).clip(-1, 1))
         return np.hstack((angles - np.mean(angles), norm_x - 1))
-    def f2 (x):
+    def f2 (x): # great sphere
         return Sphere1(x / la.norm(x), 0).distances(points)
-    def g (x):
+    def g (x): # small sphere torus dist
         if abs(x[-1]) > 1:
             if verbose:
                 print('Fail:', x[-1])
@@ -130,7 +130,7 @@ def __get_functions (points, list_spheres, half, verbose):
             return __torus_dists(unfold_points(feet, list_spheres),
                                  unfold_points(points, list_spheres), half)
         return __torus_dists(feet, points, half)
-    def g2 (x):
+    def g2 (x): # great sphere torus dist
         feet = Sphere1(x / la.norm(x), 0).foot_points(points)
         if len(list_spheres) > 0:
             return __torus_dists(unfold_points(feet, list_spheres),

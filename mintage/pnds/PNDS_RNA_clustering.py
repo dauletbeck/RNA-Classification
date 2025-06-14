@@ -166,10 +166,6 @@ def __slink_pns(
         clusters (list of list-of‐int):
             The final list of clusters after all possible splits have been performed.
     """
-
-    import os
-    import numpy as np
-
     # Directory where intermediate mode‐hunting plots (Gaussian fits, separations) will be saved.
     folder = "./out/Gaussian_mode_hunting/"
     if not os.path.exists(folder):

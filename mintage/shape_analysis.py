@@ -511,6 +511,43 @@ def distance_matrix(data, distance='torus'):
         return np.arccos(1 - pdist(data, 'cosine'))
     if distance == 'euclidean':
         return pdist(data, 'euclidean')
+    if distance == 'low_res_suite_shape':
+        return pdist(data, d_low_res_suite_shape)
+
+def d_low_res_suite_shape(x, y):
+    """
+    A distance function for the low resolution suite shape.
+    Notation is according to the paper.
+    :param x: A vector with the first shape.
+    :param y: A vector with the second shape.
+    :return: The distance between the two shapes.
+    """
+    d_2_x, d_3_x, alpha_x, theta_1_x, phi_1_x, theta_2_x, phi_2_x = x
+    d_2_y, d_3_y, alpha_y, theta_1_y, phi_1_y, theta_2_y, phi_2_y = y
+
+    # angles to radians
+    alpha_x = np.deg2rad(alpha_x)
+    alpha_y = np.deg2rad(alpha_y)
+
+    theta_1_x = np.deg2rad(theta_1_x)
+    theta_1_y = np.deg2rad(theta_1_y)
+    phi_1_x = np.deg2rad(phi_1_x)
+    phi_1_y = np.deg2rad(phi_1_y)
+    theta_2_x = np.deg2rad(theta_2_x)
+    theta_2_y = np.deg2rad(theta_2_y)
+    phi_2_x = np.deg2rad(phi_2_x)
+    phi_2_y = np.deg2rad(phi_2_y)
+    
+    # d_d2, d_d3, d_alpha are euclidean distances
+    d_d2 = d_2_x - d_2_y
+    d_d3 = d_3_x - d_3_y
+    d_alpha = alpha_x - alpha_y
+    # d_theta_1, d_phi_1, d_theta_2, d_phi_2 are spherical distances. Expansion is based on computing the dot product of vectors (sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta)).
+    # sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta)
+    d_s1 = np.arccos(np.sin(theta_1_x) * np.sin(theta_1_y) * np.cos(phi_1_x - phi_1_y) + np.cos(theta_1_x) * np.cos(theta_1_y))
+    d_s2 = np.arccos(np.sin(theta_2_x) * np.sin(theta_2_y) * np.cos(phi_2_x - phi_2_y) + np.cos(theta_2_x) * np.cos(theta_2_y))
+    return np.sqrt(d_d2 ** 2 + d_d3 ** 2 + d_alpha ** 2 + d_s1 ** 2 + d_s2 ** 2)
+
 
 
 def circular_mean(data):

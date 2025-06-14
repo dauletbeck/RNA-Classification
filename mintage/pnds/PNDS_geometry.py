@@ -40,43 +40,199 @@ EPS = 1e-10
 ###################################   RESH   ###################################
 ################################################################################
 
-def RESHify_1D (data, invert, mode='gap', codata=None):
-    cuts = best_cuts(data) if mode == 'gap' else circular_mean_cuts(data)
-    spread = np.abs(data - cuts[:,1])
-    spread[spread>180] -= 360
-    spread = np.sqrt(np.sum(spread**2, axis=0)/len(data))
-    if invert:
-        """ Greatest spread first, i.e. outermost."""
-        cuts = cuts[spread.argsort()[::-1]]
+# -----------------------------------------------------------------------------
+# RESHify_1D: Refactored
+# -----------------------------------------------------------------------------
+def RESHify_1D(
+    data: np.ndarray,
+    invert: bool,
+    mode: str = 'gap',
+    codata: np.ndarray = None
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    """
+    Take 1D‐angle data (rows = observations, columns = angles) and produce a 
+    “spherical embedding” version of it, returning:
+      1) the spherical‐embedded data (shape = [n_obs, n_dims]),
+      2) the chosen 'cuts' array,
+      3) the boolean 'half' flag.
+
+    Steps:
+      1. Pick a set of candidate cuts (either by `best_cuts` or by `circular_mean_cuts`).
+      2. Compute a spread‐score for each candidate cut.
+      3. Sort the cuts by that spread (largest first if invert=True, else smallest first).
+      4. Decide whether we are in half‐range (True/False).
+      5. If `codata` is provided, stack it onto the original data.
+      6. Finally call `sort_data(...)` and `to_sphere(...)` to return the transformed data.
+    """
+    # 1) Choose cut candidates
+    if mode == 'gap':
+        cuts = best_cuts(data)
     else:
-        """ Greatest spread last, i.e. innermost."""
-        cuts = cuts[spread.argsort()]
-    half = (cuts[:-1,2] < 180.).any() if mode == 'gap' else True
-    if not codata is None:
-        data = np.vstack((data, codata))
-    return to_sphere(sort_data(data, cuts, half) * RAD, half), cuts, half
+        cuts = circular_mean_cuts(data)
 
-def unRESHify_1D (data, angles, half):
-    tmp = data.copy()
-    angle_tmp = np.zeros(data.shape)
-    n = data.shape[1]-1
-    for i in range(n):
-        for j in range(i):
-            tmp[:,i] /= np.sin(angle_tmp[:,j]).clip(EPS, 1)
-        angle_tmp[:,i] = np.arccos(tmp[:,i].clip(-1,1))
-    for j in range(n-1):
-        tmp[:,-1] /= np.sin(angle_tmp[:,j]).clip(EPS, 1)
-    angle_tmp[:,-2] = (2 * PI + np.arctan2(tmp[:,-1], tmp[:,-2])) % (2 * PI)
-    angle_tmp = angle_tmp[:,:-1] * DEG + 270
-    angle_tmp[:,:-1] *= (2 if half else 1)
-    angle_data = np.zeros(angle_tmp.shape)
-    for i in range(n):
-        angle_data[:,int(angles[i][0])] = angle_tmp[:,i]
-    angle_data = (angle_data + angle_shift(angles)) % 360
-    return angle_data
+    # 2) Compute the "spread" of data relative to each cut's central angle
+    #    cuts[:, 1] is assumed to be the center‐angle for that cut (in degrees).
+    #    data is [n_angles, n_samples] or [n_vars, n_obs] – we subtract to get an
+    #    array of the same shape to measure how far each angle in 'data' is from
+    #    the cut’s center. Then adjust any difference > 180° by subtracting 360°.
+    diffs = np.abs(data - cuts[:, 1])  # shape: [n_cuts, n_dims]
+    diffs[diffs > 180.0] -= 360.0
 
-def RESHify (sphere1, sphere2, colors, with_plots=False):
-    return full_RESHify([sphere1, sphere2], colors, with_plots)
+    #    Now compute root‐mean‐square over each column (i.e. each cut),
+    #    dividing by # of angles (len(data)) – this yields a 1D array of length n_cuts.
+    #    In effect: spread[c] = sqrt( sum_j (diffs[c, j]^2 ) / n_dims ).
+    spread = np.sqrt(np.sum(diffs ** 2, axis=1) / float(data.shape[1]))
+
+    # 3) Sort 'cuts' by spread
+    #    If invert=True, we want the largest‐spread cuts to come first (outermost cuts).
+    #    Otherwise, we want the smallest‐spread cuts to come first (innermost).
+    sort_indices = np.argsort(spread)
+    if invert:
+        sort_indices = sort_indices[::-1]
+    cuts = cuts[sort_indices]
+
+    # 4) Decide the 'half' flag
+    #    If mode='gap', check whether any cut's third column (angle) < 180° (excluding the last row).
+    #    If any are < 180°, then half = True; otherwise False.
+    #    If mode!='gap', we always set half=True.
+    if mode == 'gap':
+        # cuts[:-1, 2] < 180. checks all but the last row’s angle
+        half = bool((cuts[:-1, 2] < 180.0).any())
+    else:
+        half = True
+
+    # 5) If codata is provided, stack it underneath the original data
+    if codata is not None:
+        data = np.vstack((data, codata))  # shape grows in rows
+
+    # 6) Perform the final sorting & spherical mapping
+    #    - sort_data(data, cuts, half) → returns a cartesian‐oned‐arr that we multiply by RAD
+    #    - to_sphere(..., half) → returns final spherical coords.
+    sorted_cartesian = sort_data(data, cuts, half) * RAD
+    spherical_data = to_sphere(sorted_cartesian, half)
+
+    return spherical_data, cuts, half
+
+
+
+# -----------------------------------------------------------------------------
+# unRESHify_1D: Refactored
+# -----------------------------------------------------------------------------
+def unRESHify_1D(
+    sphere_data: np.ndarray,
+    angles_info: np.ndarray,
+    half: bool
+) -> np.ndarray:
+    """
+    Reverse the transformation done by RESHify_1D.
+    Given:
+      - sphere_data: the output of `to_sphere(...)` (i.e. the spherical embedding),
+      - angles_info: the 'cuts' array that was returned by RESHify_1D,
+      - half: the boolean half‐flag that was returned by RESHify_1D,
+
+    This routine reconstructs the original 1D angles (in degrees) from the spherical form.
+
+    Internally it:
+      1. Iteratively “unwinds” each dimension by dividing out sin(theta) terms.
+      2. Recomputes each angle by arccos or arctan2 as appropriate.
+      3. Scales and shifts the angles by 270° (and multiplies by 2 if half=True).
+      4. Reorders the columns back to the original dimension order using `angles_info`.
+      5. Adds the final global shift via angle_shift(angles_info).
+    """
+    # Make a local copy to avoid modifying the original input
+    tmp = sphere_data.copy()  # shape: [n_obs, n_dims]
+    n_dims = tmp.shape[1]
+
+    # We'll fill angle_tmp[:, i] with the “intermediate” polar/radial values (in radians)
+    angle_tmp = np.zeros_like(tmp)
+
+    # 1) Iteratively recover each “layer” of angles from dimension 0 up to n_dims-2
+    #    At step i, we know that tmp[:, i] = cos(angle_i) * Π_{j<i} sin(angle_j).
+    #    Therefore, to isolate cos(angle_i), we divide tmp[:, i] by prod_{j<i} sin(angle_tmp[:, j]).
+    for i in range(n_dims - 1):
+        # Divide out all previous sin(angle) factors
+        if i > 0:
+            prod_of_sines = np.ones(tmp.shape[0])
+            for j in range(i):
+                prod_of_sines *= np.sin(angle_tmp[:, j]).clip(EPS, 1.0)
+            tmp[:, i] = tmp[:, i] / prod_of_sines
+
+        # Now angle_tmp[:, i] = arccos(tmp[:, i]) (clip to [-1,1] to avoid numerical error)
+        angle_tmp[:, i] = np.arccos(np.clip(tmp[:, i], -1.0, 1.0))
+
+    # 2) Handle the last column of tmp (index = n_dims-1). Its formula is
+    #    tmp[:, -1] = sin(angle_{n_dims-2}) * sin(angle_{n_dims-1}), 
+    #    so first divide out sin(angle_{n_dims-2}) to isolate sin(angle_{n_dims-1}).
+    if n_dims >= 2:
+        prod_of_sines = np.ones(tmp.shape[0])
+        for j in range(n_dims - 1):
+            prod_of_sines *= np.sin(angle_tmp[:, j]).clip(EPS, 1.0)
+        tmp[:, -1] = tmp[:, -1] / prod_of_sines
+
+        # Then we reconstruct the second‐to‐last angle via arctan2:
+        # angle_{n_dims-2} = arctan2( tmp[:, -1], tmp[:, -2] )
+        # (plus 2π to ensure we stay in [0, 2π))
+        angle_tmp[:, -2] = (2.0 * PI + np.arctan2(tmp[:, -1], tmp[:, -2])) % (2.0 * PI)
+
+    # 3) Now angle_tmp[:, :-1] are all in [0, π]. We want degrees and shift by +270°.
+    #    Then if half=True, we scaled angles originally by ½, so we multiply by 2 now.
+    angle_deg = angle_tmp[:, :-1] * DEG + 270.0  # shift
+    if half:
+        angle_deg[:, :] *= 2.0
+
+    # 4) Build the final output array, placing each dimension back into its original index.
+    #    angles_info is assumed to have the information for where each “intermediate” angle
+    #    belongs in the final ordering. We create an array of shape [n_obs, n_original_dims],
+    #    fill it with zeros, then assign `angle_deg[:, i]` to column = angles_info[i, 0].
+    n_obs = sphere_data.shape[0]
+    n_original_dims = int(np.max(angles_info[:, 0])) + 1
+    recovered = np.zeros((n_obs, n_original_dims))
+
+    for i in range(angle_deg.shape[1]):
+        original_index = int(angles_info[i, 0])
+        recovered[:, original_index] = angle_deg[:, i]
+
+    # 5) Finally, add the “angle_shift” correction (mod 360)
+    recovered = (recovered + angle_shift(angles_info)) % 360.0
+
+    return recovered
+# def RESHify_1D (data, invert, mode='gap', codata=None):
+#     cuts = best_cuts(data) if mode == 'gap' else circular_mean_cuts(data)
+#     spread = np.abs(data - cuts[:,1])
+#     spread[spread>180] -= 360
+#     spread = np.sqrt(np.sum(spread**2, axis=0)/len(data))
+#     if invert:
+#         """ Greatest spread first, i.e. outermost."""
+#         cuts = cuts[spread.argsort()[::-1]]
+#     else:
+#         """ Greatest spread last, i.e. innermost."""
+#         cuts = cuts[spread.argsort()]
+#     half = (cuts[:-1,2] < 180.).any() if mode == 'gap' else True
+#     if not codata is None:
+#         data = np.vstack((data, codata))
+#     return to_sphere(sort_data(data, cuts, half) * RAD, half), cuts, half
+
+# def unRESHify_1D (data, angles, half):
+#     tmp = data.copy()
+#     angle_tmp = np.zeros(data.shape)
+#     n = data.shape[1]-1
+#     for i in range(n):
+#         for j in range(i):
+#             tmp[:,i] /= np.sin(angle_tmp[:,j]).clip(EPS, 1)
+#         angle_tmp[:,i] = np.arccos(tmp[:,i].clip(-1,1))
+#     for j in range(n-1):
+#         tmp[:,-1] /= np.sin(angle_tmp[:,j]).clip(EPS, 1)
+#     angle_tmp[:,-2] = (2 * PI + np.arctan2(tmp[:,-1], tmp[:,-2])) % (2 * PI)
+#     angle_tmp = angle_tmp[:,:-1] * DEG + 270
+#     angle_tmp[:,:-1] *= (2 if half else 1)
+#     angle_data = np.zeros(angle_tmp.shape)
+#     for i in range(n):
+#         angle_data[:,int(angles[i][0])] = angle_tmp[:,i]
+#     angle_data = (angle_data + angle_shift(angles)) % 360
+#     return angle_data
+
+# def RESHify (sphere1, sphere2, colors, with_plots=False):
+#     return full_RESHify([sphere1, sphere2], colors, with_plots)
 
 # def full_RESHify_old (spheres, colors, verbose=False, with_plots=False):
 #     sphere_list = []

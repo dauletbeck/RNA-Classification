@@ -17,6 +17,7 @@ License along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
 or see <http://www.gnu.org/licenses/>.
 """
+
 # Standard library imports
 import math
 import os
@@ -58,15 +59,45 @@ from pnds.PNDS_plot import (
     linear_1d_plot,
     plot_thread
 )
-from pnds.PNDS_PNS import pns_loop, fold_points, unfold_points, as_matrix 
+from pnds.PNDS_PNS import PNS  # <<<<<<<<<<< NEW: use class-based PNS
 
 ################################################################################
 ################################   Constants   #################################
 ################################################################################
 
+
 DEG = math.degrees(1)
 OUTPUT_FOLDER = "./out/Torus_PCA/"
 
+################################################################################
+###########################   Utility functions   ##############################
+################################################################################
+
+def unfold_points(points, list_spheres):
+    """
+    Recursively 'unprojects' points through all Sphere projections (reverse order).
+    """
+    out = np.array(points, copy=True)
+    for sphere in reversed(list_spheres):
+        if sphere is not None:
+            out = sphere.unproject(out)
+    return out
+
+def fold_points(points, list_spheres):
+    """
+    Projects points through all Sphere projections in order.
+    """
+    out = np.array(points, copy=True)
+    for sphere in list_spheres:
+        if sphere is not None:
+            out = sphere.project(out)
+    return out
+
+def as_matrix(vector):
+    """
+    Ensures input is a 2D array with shape (1, n_features).
+    """
+    return np.atleast_2d(vector)
 
 ################################################################################
 ############################   Auxiliary function   ############################
@@ -84,291 +115,445 @@ def histogram_plot(data, bin_size=1):
     matplotlib.pyplot.show()
     matplotlib.pyplot.close()
 
-
 ################################################################################
 #############################   Control function   #############################
 ################################################################################
 
-""" Clustering """
-
-
 def new_multi_slink(scale, data=None, cluster_list=None, outlier_list=None, min_cluster_size=2):
+    """
+    Main multi-slink clustering pipeline.
+    """
     if data is None:
         points = import_csv(find_files('RNA_data_richardson.csv')[0])['PDB-Data']
     else:
         points = data
-    # Import single-linkage clusters. this will have to be changed!
     if cluster_list is None:
         clusters = import_lists(find_files('RNA_data_richardson*multiSLINK_result.csv')[0])
     else:
         clusters = cluster_list
-    noise = [np.array(outlier_list)]  # [np.array(sorted(clusters[-1]))]
-
-    # Sort clusters by size.
+    noise = [np.array(outlier_list)]
     clusters = list(reversed(sorted([np.array(sorted(x)) for x in clusters], key=len)))
-
-    # Lists for plottable data.
     scree_data = []
     scree_data_euclid = []
     std_data = []
     scree_labels = []
-
-    # Perform further clustering.
+    print('starting pns')
     clusters = __slink_pns(clusters, points, scree_data, scree_data_euclid, std_data, scree_labels, 'filtered', scale,
                            min_cluster=min_cluster_size)
     return clusters, noise
 
 
-"""
-The main data processing function.
-"""
-
-def __slink_pns(
-    new_clusters,
-    points,
-    scree_data,
-    scree_data_euclid,
-    std_data,
-    scree_labels,
-    type_name,
-    scale,
-    old_modehunting=False,
-    min_cluster=2
-):
-    """
-    Perform single‐linkage clustering with Principal Nested Spheres (PNS) mode hunting.
-
-    Args:
-        new_clusters (list of list-of‐int):
-            Initially, a list of “parent” clusters (each cluster = indices of points). As splits are found,
-            newly created subclusters are appended here.
-        points (ndarray of shape (N, D)):
-            The D‐dimensional dihedral angles (or other D‐dimensional coordinates) for each of the N data points.
-            Points are not pre‐sorted by cluster; indexing          points[c] gives the subset for cluster c.
-        scree_data (ndarray):
-            Data used for scree‐plot mode hunting (non‐Euclidean distances).
-        scree_data_euclid (ndarray):
-            Data used for scree‐plot mode hunting in Euclidean space.
-        std_data (ndarray):
-            Standardized data matrix (e.g. z‐scores of the original variables).
-        scree_labels (list or array of strings):
-            Labels corresponding to the coordinates in `scree_data` / `std_data` (used for plotting names).
-        type_name (str):
-            A string indicating the “type” or “stage” of clustering (e.g. `'filtered'`, used in filenames).
-        scale (float or dict):
-            Scaling parameter(s) used in Gaussian mode‐hunting subroutines (passed to helper functions).
-        old_modehunting (bool, default=False):
-            If True, use an older mode‐hunting routine. Otherwise, use the newer one.
-        min_cluster (int, default=2):
-            Minimum cluster size threshold for attempting further separation.
-
-    Returns:
-        clusters (list of list-of‐int):
-            The final list of clusters after all possible splits have been performed.
-    """
-    # Directory where intermediate mode‐hunting plots (Gaussian fits, separations) will be saved.
+def __slink_pns(new_clusters, points, scree_data, scree_data_euclid, std_data,
+                scree_labels, type_name, scale, old_modehunting=False, min_cluster=2):
     folder = "./out/Gaussian_mode_hunting/"
     if not os.path.exists(folder):
         os.makedirs(folder)
 
-    # Boolean flag: if True, try “large cluster separation” at the end of each branch.
     cluster_separation = True
-
-    # Whether we are still splitting; 'split' becomes False once all clusters are “final.”
     split = True
     count = 0
-    final_clusters = []  # will hold clusters that no longer need splitting
+    final_clusters = []
+    inv_modes = [[False, 'gap'], [True, 'gap'], [False, 'mean'], [True, 'mean']]
 
-    # Each time through the while‐loop, we take one “parent” cluster from new_clusters
-    # and attempt to split it further (via PNS mode‐hunting). If it splits, we add
-    # the new subclusters back into new_clusters; if not, we add it to final_clusters.
     while split:
-        if len(new_clusters) == 0:
-            # No more clusters left to process
-            split = False
-            break
-
-        # Pop the first cluster to process
-        c = new_clusters.pop(0)
-        p = points[c]  # shape (#points in c, D)
-
-        # If cluster size is too small, we declare it “final” immediately
-        if p.shape[0] <= min_cluster:
-            final_clusters.append(c)
-            continue
-
-        # Create unique plot names for this cluster (so that each cluster's
-        # Gaussian‐fit plot and mode‐separation plot are saved separately).
-        name_gaussplot = os.path.join(
-            folder, f"gauss_{type_name}_{scale}_{count}.png"
-        )
-        name_separation_plot = os.path.join(
-            folder, f"sep_{type_name}_{scale}_{count}.png"
-        )
+        split = False
         count += 1
+        clusters = list(reversed(sorted(new_clusters, key=len)))
+        if type_name == 'filtered':
+            export_csv({('cluster%02d' % i): c for i, c in enumerate(clusters)},
+                       'slink_rich_clusters_1d.csv', mode='Int')
+        elif type_name == 'noise':
+            export_csv({('cluster%02d' % i): c for i, c in enumerate(clusters)},
+                       'slink_rich_noise_1d.csv', mode='Int')
+        new_clusters = []
 
-        # Depending on mode‐hunting style, we prepare a list of “inversion + mode”
-        # combinations to try. For example: [ [False, '1'], [True, '2'], ... ]
-        if old_modehunting:
-            # The “old” mode‐hunting routine loops over every possible combination
-            inv_modes = []
-            for mode in scree_labels:
-                inv_modes.append([False, mode])  # no inversion
-                inv_modes.append([True, mode])   # inverted
-
-        else:
-            # The “new” routine only tries one selected label (e.g. first 7 dims)
-            inv_modes = [[False, f] for f in scree_labels[:7]]
-
-        # If no mode‐hunting labels are provided, treat cluster as final
-        if len(inv_modes) == 0:
-            new_clusters.append(c)
-            final_clusters.append(c)
-            continue
-
-        # Prepare storage for Gaussian‐fit distances and clustering decisions
-        dist_list = []
-        point_list = []
-
-        # Loop over each (invert, mode‐label) pair:
-        for (invert, mode_label) in inv_modes:
-            print(f"{'SO' if invert else 'SI'} {mode_label}", flush=True)
-
-            # Build a “suffix” for filenames: e.g. 'SO_label_' or 'SI_label_'
-            suffix = ("SO_" if invert else "SI_") + mode_label + "_"
-
-            # STEP 1: RESHify_1D transforms p[:, :7] into “sphere‐coordinates” for PNS.
-            #   It returns: (sphere_points, means, half‐spheres),
-            #   so that the last dimension becomes a 1D circle (one angle).
-            sphere_points, means, half = RESHify_1D(p[:, :7], invert, mode_label)
-
-            # STEP 2: Run PNS‐loop on those “sphere_points” to find nested spheres.
-            #   This returns:
-            #     spheres: list of sphere‐parameters at each nesting level
-            #     projected_points: list of projected points at each level in sphere coords
-            #     distances: distances of each point from the final (smallest) fitted sphere
-            spheres, projected_points, distances = pns_loop(
-                sphere_points,
-                max_iter=10,
-                tol=10,
-                degenerate=False,
-                verbose=False,
-                mode="torus"
-            )
-
-            # Unfold the very last set of projected points back into original 7D
-            last_proj = projected_points[-1]
-            center_point = unRESHify_1D(
-                unfold_points(as_matrix(last_proj), spheres[:-1]),
-                means,
-                half
-            )
-
-            # Also compute “unfolded” 1D principal circle coordinates from second‐last level
-            second_last_proj = projected_points[-2]
-            unfolded_1d = unRESHify_1D(
-                unfold_points(second_last_proj, spheres[:-1]),
-                means,
-                half
-            )
-
-            # STEP 3: Compute a “relative residual variance”:
-            #   Numerator: average squared Torus‐distance between unfolded_1d and original p[:, :7]
-            #   Denominator: average squared Torus‐distance between center_point and original p[:, :7]
-            #   If this ratio is “small,” it means most variance is explained by that final circle.
-            rel_resid_var = (
-                np.mean(torus_distances(unfolded_1d, p[:, :7]) ** 2)
-                / np.mean(torus_distances(center_point, p[:, :7]) ** 2)
-            )
-
-            # STEP 4: Fit a 1D Gaussian mixture model to the list of distances,
-            #   attempting to see if there's a “split” (two or more modes).
-            #   If a split is found (log‐likelihood improvement exceeds threshold),
-            #   we record the distances, the centers (means), and the split‐criterion.
-            best_split = _fit_1d_gaussians(
-                distances,
-                prefix=suffix,
-                scale=scale,
-                rel_resid_var=rel_resid_var,
-                stop_if_no_split=True
-            )
-
-            # If a split was found in this “invert+mode” combination:
-            if best_split is not None:
-                # best_split = (gauss_means, split_labels, loglike_ratio)
-                gauss_means, labels, llr = best_split
-
-                # “labels” is an array of size (#points in cluster) giving which Gaussian
-                # each point belongs to (e.g. 0 vs. 1). So we split c into two index‐lists:
-                idx0 = np.where(labels == 0)[0]
-                idx1 = np.where(labels == 1)[0]
-
-                # Map those back to original indices in ‘points’
-                cluster0 = [c[i] for i in idx0]
-                cluster1 = [c[i] for i in idx1]
-
-                # Save to “dist_list” so that after all inv_modes, we can pick the best split
-                dist_list.append((suffix, gauss_means, (cluster0, cluster1)))
-                point_list.append(p)
-
-        # END FOR each (invert, mode_label)
-
-        # If we have at least one candidate split across all inv_modes:
-        if len(dist_list) > 0:
-            # Each entry in dist_list = (suffix, gauss_means, (cluster0, cluster1))
-            # Sort candidate splits by (e.g.) best log‐likelihood ratio or distance separation:
-            # Here we assume “gauss_means” is 1D array of the two means; we sort by their distance
-            dist_list_sorted = sorted(
-                dist_list, key=lambda x: abs(x[1][0] - x[1][1]), reverse=True
-            )
-            best_suffix, best_means, (best_c0, best_c1) = dist_list_sorted[0]
-
-            # Plot the chosen best Gaussian fit (for user inspection)
-            _plot_gaussian_mode(
-                name_gaussplot,
-                dist_list_sorted,
-                p,
-                means_plot=best_means,
-                split=True,
-                stop=False
-            )
-
-            # Now that we have two new subclusters, we add them to “new_clusters” for further splitting
-            new_clusters.append(best_c0)
-            new_clusters.append(best_c1)
-            final_clusters.append(best_c0)
-            final_clusters.append(best_c1)
-
-        else:
-            # If no split was found (dist_list is empty), then we treat c as “final”
-            _plot_gaussian_mode(
-                name_gaussplot,
-                dist_list,
-                p,
-                means_plot=None,
-                split=False,
-                stop=False
-            )
-
-            # If cluster_separation is True and c is “large,” attempt a last separation pass
-            if cluster_separation and len(c) > min_cluster:
-                large_c, leftover_c = large_cluster_separation(
-                    p,
-                    c,
-                    plot_names=name_separation_plot
-                )
-                new_clusters.append(large_c)
-                if len(leftover_c) > 0:
-                    new_clusters.append(leftover_c)
-                final_clusters.append(large_c)
-            else:
+        for i, c in enumerate(clusters):
+            # Ignore clusters which are final
+            if any(np.array_equal(c, f) for f in final_clusters):
                 new_clusters.append(c)
-                final_clusters.append(c)
+                continue
 
-    # END WHILE split
+            # Run PNS and collect 1D projections
+            name = OUTPUT_FOLDER + 'slink_rich_' + type_name + '_run%d_cluster%02d_%d_points_' % (count, i, len(c))
+            name_gaussplot = folder + type_name + '_run%d_cluster%02d_%d_points_' % (count, i, len(c))
+            name_separation_plot = type_name + '_run%d_cluster%02d_%d_points_' % (count, i, len(c))
+            
+            p = points[c]
+            print(p.shape, flush=True)
+            dist_list = []
+            point_list = []
 
-    print('Clustering done.', len(final_clusters), 'clusters found.', flush=True)
-    return final_clusters
+            if len(c) == 0:
+                continue
+            if p.size == 0:
+                continue
+
+            for [invert, mode] in inv_modes:
+                print('SO' if invert else 'SI', mode, flush=True)
+                suffix = ('SO_' if invert else 'SI_') + mode + '_'
+                
+                # Transform to sphere coordinates
+                sphere_points, means, half = RESHify_1D(p[:, :7], invert, mode)
+                
+                if sphere_points.size == 0:
+                    dist_list.append(None)
+                    continue
+                    
+                # Run PNS using the PNS class
+                pns_estimator = PNS(great_until_dim=2, max_repetitions=10, verbose=False)
+                pns_estimator.fit(sphere_points)
+                
+                # Check if PNS fit was successful
+                if pns_estimator.spheres_ is None or pns_estimator.points_ is None:
+                    print(f"PNS fit failed for cluster {i} with mode {mode}")
+                    dist_list.append(None)
+                    continue
+                    
+                spheres = pns_estimator.spheres_
+                projected_points = pns_estimator.points_
+                distances = pns_estimator.dists_
+                
+                # Compute center point and unfolded 1D projections
+                center_point = unRESHify_1D(
+                    unfold_points(as_matrix(projected_points[-1]), spheres[:-1]),
+                    means, half
+                )
+                unfolded_1d = unRESHify_1D(
+                    unfold_points(projected_points[-2], spheres[:-1]),
+                    means, half
+                )
+
+                # Compute relative residual variance
+                relative_residual_variance = (
+                    np.mean(torus_distances(unfolded_1d, p[:, :7]) ** 2) /
+                    np.mean(torus_distances(center_point, p[:, :7]) ** 2)
+                )
+
+                # Store points for plotting
+                point_list.append([unfolded_1d, suffix])
+
+                # Mode hunting
+                mode_hunting = True
+                unimodal_test = True
+                if unimodal_test:
+                    order = 1
+                    while relative_residual_variance > 0.25:
+                        print('WARNING: High residual variance in', 'SO' if invert else 'SI', mode, ':',
+                              relative_residual_variance)
+                        order += 1
+                        if order >= 7:
+                            dist_list.append(None)
+                            mode_hunting = False
+                            break
+
+                        modes = mode_test_gaussian(distances[-order], 0.05)
+                        if modes == 2:
+                            dist_list.append(None)
+                            mode_hunting = False
+                            break
+                        unfolded = unRESHify_1D(
+                            unfold_points(projected_points[-2], spheres[:-1]),
+                            means, half
+                        )
+                        relative_residual_variance = (
+                            np.mean(torus_distances(unfolded, p[:, :7]) ** 2) /
+                            np.mean(torus_distances(center_point, p[:, :7]) ** 2)
+                        )
+
+                    if mode_hunting:
+                        dist_list.append(distances[-1])
+                else:
+                    if relative_residual_variance > 0.25:
+                        print('WARNING: High residual variance in', 'SO' if invert else 'SI', mode, ':',
+                              relative_residual_variance)
+                        dist_list.append(None)
+                        mode_hunting = False
+                    else:
+                        dist_list.append(distances[-1])
+
+            # Mode hunting logic
+            if old_modehunting:
+                # First check the highest alpha for quick stop
+                this_split = True
+                mode_list = [np.array(range(len(c)))]
+                mins = np.zeros(1)
+                quantile = get_quantile(len(p), 0.05)
+                
+                for i, dists in enumerate(dist_list):
+                    if dists is None:
+                        continue
+                    mode_list, mins = get_modes(dists, 360., quantile)
+                    if len(mins) > 1:
+                        this_split = False
+                        print(len(mins), 'modes expected')
+                        break
+
+                # Perform mode hunting
+                alpha = 0
+                while (not this_split) and (alpha < 5):
+                    alpha += 1
+                    quantile = get_quantile(len(p), 0.01 * alpha)
+                    for i, dists in enumerate(dist_list):
+                        if dists is None:
+                            continue
+                        mode_list, mins = get_modes(dists, 360., quantile)
+                        [invert, mode] = inv_modes[i]
+                        if len(mins) > 1:
+                            print('SO' if invert else 'SI', mode, mins)
+                            print(len(mins), 'modes found at alpha = %.2f' % (0.01 * alpha), flush=True)
+                            suffix = ('SO_' if invert else 'SI_') + mode + '_'
+                            sphere_points, means, half = RESHify_1D(p[:, :7], invert, mode)
+                            pns_estimator = PNS(great_until_dim=2, max_repetitions=10, verbose=False)
+                            pns_estimator.fit(sphere_points)
+                            spheres = pns_estimator.spheres_
+                            projected_points = pns_estimator.points_
+                            distances = pns_estimator.dists_
+                            
+                            __slink_plotting(name, suffix, p, distances, projected_points,
+                                           spheres, means, half, c, count,
+                                           scree_data, scree_data_euclid,
+                                           std_data, scree_labels, False, scale, [])
+                            new_clusters += [c[x] for x in mode_list]
+                            this_split = True
+                            split = True
+                            break
+                if len(mins) <= 1:
+                    print('No modes found!')
+                    suffix = ('SO_' if invert else 'SI_') + mode + '_'
+                    __slink_plotting(name, suffix, p, distances, projected_points,
+                                   spheres, means, half, c, count, scree_data,
+                                   scree_data_euclid, std_data, scree_labels,
+                                   True, scale, [])
+                    new_clusters += [c[x] for x in mode_list]
+                    final_clusters.append(c)
+            else:
+                print("gaussian modehunting")
+                __slink_plotting(name_gaussplot, "", p, distances, projected_points,
+                               spheres, means, half, c, count,
+                               scree_data, scree_data_euclid,
+                               std_data, scree_labels, False, scale, [])
+
+                point_plot = False
+                if point_plot:
+                    for j in range(len(point_list)):
+                        plot_folder = "./out/point_list/" + type_name + \
+                                    '_run%d_cluster%02d_%d_points_' % (count, i, len(c)) + str(j)
+                        _plot_circles(plot_folder + point_list[j][1], point_list[j][0][:, :7], s=25)
+
+                dist_list_sorted = [dist for dist in dist_list if dist is not None]
+                if len(dist_list_sorted) > 0:
+                    gesplitted = False
+                    gauss_means = []
+                    for i, dists in enumerate(dist_list_sorted):
+                        indexlist, gesplitted, gauss_means_for_plot = modehunting_gaussian(
+                            dists, 0.05, min_cluster_size=min_cluster
+                        )
+                        gauss_means.append(gauss_means_for_plot)
+
+                        if gesplitted:
+                            if np.sum(indexlist) > 0.5 * len(c):
+                                indexlist = 1 - indexlist
+                            new_clusters += [c[indexlist == 0], c[indexlist == 1]]
+                            split = True
+                            _plot_gaussian_mode(name_gaussplot, dist_list_sorted, p, indexlist, split=True,
+                                             means_plot=gauss_means)
+                            break
+
+                    if not gesplitted:
+                        new_clusters.append(c)
+                        final_clusters.append(c)
+                        _plot_gaussian_mode(name_gaussplot, dist_list_sorted, p, None, split=False, stop=False,
+                                         means_plot=gauss_means)
+                        continue
+
+                else:
+                    _plot_gaussian_mode(name_gaussplot, dist_list_sorted, p, None, split=False, stop=False)
+                    if cluster_separation and len(c) > min_cluster:
+                        try:
+                            large_c, leftover_c = large_cluster_separation(p, c, plot_names=name_separation_plot)
+                            if len(large_c) > 0:  # Only add non-empty clusters
+                                new_clusters.append(large_c)
+                            if len(leftover_c) > 0:
+                                new_clusters.append(leftover_c)
+                            if len(large_c) > 0:
+                                final_clusters.append(large_c)
+                        except Exception as e:
+                            print(f"Error in cluster separation: {str(e)}")
+                            new_clusters.append(c)
+                            final_clusters.append(c)
+                    else:
+                        new_clusters.append(c)
+                        final_clusters.append(c)
+
+    print('Clustering done.', len(clusters), 'clusters found.', flush=True)
+    return clusters
+
+# def __slink_pns(
+#     new_clusters,
+#     points,
+#     scree_data,
+#     scree_data_euclid,
+#     std_data,
+#     scree_labels,
+#     type_name,
+#     scale,
+#     old_modehunting=False,
+#     min_cluster=2
+# ):
+#     """
+#     Perform single-linkage clustering with Principal Nested Spheres (PNS) mode hunting.
+
+#     This function follows these main steps (as in the legacy code):
+
+#     1. For each cluster, run RESHify_1D to transform into sphere coordinates.
+#     2. Run Principal Nested Spheres (PNS) on those coordinates.
+#     3. Compute 1D projections, residual variances.
+#     4. Mode-hunt on the PNS output using mode_test_gaussian (for splits).
+#     5. If a split is found, split the cluster and continue; otherwise, finalize it.
+#     6. Optionally, do a last-ditch cluster separation for large clusters.
+#     """
+#     print('__slink_pns')
+#     folder = "./out/Gaussian_mode_hunting/"
+#     if not os.path.exists(folder):
+#         os.makedirs(folder)
+
+#     cluster_separation = True
+#     split = True
+#     count = 0
+#     final_clusters = []
+
+#     while split:
+#         split = False  # Reset split at start of each iteration
+#         count += 1
+#         print("Iteration", count, "clusters remaining", len(new_clusters))
+        
+#         # Sort clusters by size and clear new_clusters for this iteration
+#         clusters = list(reversed(sorted(new_clusters, key=len)))
+#         new_clusters = []
+
+#         # Process all clusters in this iteration
+#         for i, c in enumerate(clusters):
+#             # Skip if cluster is too small
+#             p = points[c]
+#             if p.shape[0] <= min_cluster:
+#                 final_clusters.append(c)
+#                 continue
+
+#             # Unique plot names
+#             name_gaussplot = os.path.join(folder, f"gauss_{type_name}_{scale}_{count}_{i}.png")
+#             name_separation_plot = os.path.join(folder, f"sep_{type_name}_{scale}_{count}_{i}.png")
+
+#             # Prepare inv_modes: pairs of [invert, mode_label]
+#             if old_modehunting:
+#                 inv_modes = []
+#                 for mode in scree_labels:
+#                     inv_modes.append([False, mode])
+#                     inv_modes.append([True, mode])
+#             else:
+#                 inv_modes = [[False, f] for f in scree_labels[:7]]
+
+#             # If no mode-hunting labels, treat as final
+#             if len(inv_modes) == 0:
+#                 final_clusters.append(c)
+#                 continue
+
+#             dist_list = []
+#             point_list = []
+#             cluster_splitted = False
+
+#             # Try each (invert, mode_label) combination
+#             for (invert, mode_label) in inv_modes:
+#                 print(invert, mode_label)
+#                 suffix = ("SO_" if invert else "SI_") + mode_label + "_"
+
+#                 # === Step 1: RESHify_1D transforms to sphere coordinates ===
+#                 sphere_points, means, half = RESHify_1D(p[:, :7], invert, mode_label)
+
+#                 # === Step 2: Run PNS ===
+#                 pns_estimator = PNS(great_until_dim=2, max_repetitions=10, verbose=False)
+#                 pns_estimator.fit(sphere_points)
+#                 spheres = pns_estimator.spheres_
+#                 projected_points = pns_estimator.points_
+#                 distances = pns_estimator.dists_
+
+#                 # === Step 3: Compute principal center and 1D projections ===
+#                 last_proj = projected_points[-1]
+#                 center_point = unRESHify_1D(
+#                     unfold_points(as_matrix(last_proj), spheres[:-1]),
+#                     means,
+#                     half
+#                 )
+#                 second_last_proj = projected_points[-2]
+#                 unfolded_1d = unRESHify_1D(
+#                     unfold_points(second_last_proj, spheres[:-1]),
+#                     means,
+#                     half
+#                 )
+
+#                 # === Step 4: Compute relative residual variance ===
+#                 rel_resid_var = (
+#                     np.mean(torus_distances(unfolded_1d, p[:, :7]) ** 2)
+#                     / np.mean(torus_distances(center_point, p[:, :7]) ** 2)
+#                 )
+
+#                 # === Step 5: Mode hunting for splits ===
+#                 split_result = mode_test_gaussian(distances[-1], 0.05)
+
+#                 if split_result == 2:  # 2 modes found
+#                     # Split the cluster
+#                     idx_sorted = np.argsort(distances[-1])
+#                     n_half = len(idx_sorted) // 2
+#                     cluster0 = [c[i] for i in idx_sorted[:n_half]]
+#                     cluster1 = [c[i] for i in idx_sorted[n_half:]]
+#                     dist_list.append((suffix, (np.mean(distances[-1][:n_half]), np.mean(distances[-1][n_half:])), (cluster0, cluster1)))
+#                     point_list.append(p)
+#                     cluster_splitted = True
+#                     break  # Exit loop if we found a split
+
+#             # === Step 6: Handle split results ===
+#             if cluster_splitted:
+#                 dist_list_sorted = sorted(
+#                     dist_list, key=lambda x: abs(x[1][0] - x[1][1]), reverse=True
+#                 )
+#                 best_suffix, best_means, (best_c0, best_c1) = dist_list_sorted[0]
+#                 _plot_gaussian_mode(
+#                     name_gaussplot,
+#                     dist_list_sorted,
+#                     p,
+#                     means_plot=best_means,
+#                     split=True,
+#                     stop=False
+#                 )
+#                 new_clusters.append(best_c0)
+#                 new_clusters.append(best_c1)
+#                 final_clusters.append(best_c0)
+#                 final_clusters.append(best_c1)
+#                 split = True  # Set split=True since we found a split
+#             else:
+#                 _plot_gaussian_mode(
+#                     name_gaussplot,
+#                     dist_list,
+#                     p,
+#                     means_plot=None,
+#                     split=False,
+#                     stop=False
+#                 )
+#                 if cluster_separation and len(c) > min_cluster:
+#                     large_c, leftover_c = large_cluster_separation(
+#                         p,
+#                         c,
+#                         plot_names=name_separation_plot
+#                     )
+#                     new_clusters.append(large_c)
+#                     if len(leftover_c) > 0:
+#                         new_clusters.append(leftover_c)
+#                     final_clusters.append(large_c)
+#                     split = True  # Set split=True since we did cluster separation
+#                 else:
+#                     final_clusters.append(c)  # Just add to final_clusters, don't add back to new_clusters
+
+#     print('Clustering done.', len(final_clusters), 'clusters found.', flush=True)
+#     return final_clusters
 
 
 # def __slink_pns(new_clusters, points, scree_data, scree_data_euclid, std_data,

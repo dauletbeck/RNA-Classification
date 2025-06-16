@@ -81,7 +81,7 @@ def RESHify_1D(
     #    Now compute root‐mean‐square over each column (i.e. each cut),
     #    dividing by # of angles (len(data)) – this yields a 1D array of length n_cuts.
     #    In effect: spread[c] = sqrt( sum_j (diffs[c, j]^2 ) / n_dims ).
-    spread = np.sqrt(np.sum(diffs ** 2, axis=1) / float(data.shape[1]))
+    spread = np.sqrt(np.sum(diffs ** 2, axis=0) / float(data.shape[1]))
 
     # 3) Sort 'cuts' by spread
     #    If invert=True, we want the largest‐spread cuts to come first (outermost cuts).

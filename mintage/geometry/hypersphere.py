@@ -5,19 +5,33 @@ import numpy.linalg as la
 
 EPS = 1e-8
 
+# def gram_schmidt(vectors):
+#     """Orthonormalize the rows of a matrix using Gram-Schmidt."""
+#     vectors = np.atleast_2d(vectors)
+#     n = vectors.shape[0]
+#     out = []
+#     for i in range(n):
+#         vec = vectors[i].copy()
+#         for j in range(i):
+#             vec -= np.dot(out[j], vec) * out[j]
+#         norm = la.norm(vec)
+#         if norm > EPS:
+#             out.append(vec / norm)
+#     return np.vstack(out)
+
 def gram_schmidt(vectors):
-    """Orthonormalize the rows of a matrix using Gram-Schmidt."""
+    """Orthonormalize the rows of a matrix using QR decomposition."""
     vectors = np.atleast_2d(vectors)
-    n = vectors.shape[0]
-    out = []
-    for i in range(n):
-        vec = vectors[i].copy()
-        for j in range(i):
-            vec -= np.dot(out[j], vec) * out[j]
-        norm = la.norm(vec)
-        if norm > EPS:
-            out.append(vec / norm)
-    return np.vstack(out)
+    # Get the rank of the matrix to handle linearly dependent vectors
+    rank = la.matrix_rank(vectors, tol=EPS)
+    if rank == 0:
+        return np.empty((0, vectors.shape[1]), dtype=vectors.dtype)
+    
+    # Use QR decomposition on the transpose to orthonormalize rows
+    q, r = la.qr(vectors.T)
+    
+    # Return the first 'rank' vectors, transposed back to be row vectors
+    return q[:, :rank].T
 
 class Sphere:
     """

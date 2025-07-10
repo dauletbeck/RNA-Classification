@@ -213,7 +213,7 @@ class PNS:
                 self.spheres_, self.points_, self.dists_ = None, None, None
                 return self
             list_spheres.append(sph)
-            dists, feet = sph.distances(points, with_feet=True)
+            dists, feet = sph.signed_distances(points, with_feet=True)
             points = sph.project(feet)
             list_points.append(points)
             list_dists.append(dists * DEG)

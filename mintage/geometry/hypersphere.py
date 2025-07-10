@@ -72,6 +72,38 @@ class Sphere:
         proj[zeros] = self.center
         norm_proj[zeros] = 1.0
         return self.center + self.flat_radius * (proj / norm_proj[:, None])
+    
+    def signed_distances(self, points, with_feet=False):
+        """
+        Signed geodesic distances from each point to the subsphere (only for codim=1).
+        For codim > 1, raises NotImplementedError.
+        Returns: (N,) array [and feet if with_feet]
+        """
+        # get distances from distances func
+
+        # make sure codim 1 (more than 1 normal)
+        # if len(self.normal) > 1
+        # print(codim more than 1)
+        # return distances
+
+        # signs = np.sign(np.sum(points * normal, axis=1))
+        # return distances * signs
+
+        if len(self.normals) > 1:
+            raise NotImplementedError("Signed distances only implemented for codimension 1 (hyperspheres)")
+        
+        # Get unsigned geodesic distances
+        if with_feet:
+            dists, feet = self.distances(points, with_feet=True)
+        else:
+            dists = self.distances(points, with_feet=False)
+        normal = self.normals[0]
+        # Compute the sign: dot product with normal minus offset (position)
+        signs = np.sign(np.sum(points * normal, axis=1))
+        signed_dists = dists * signs
+        if with_feet:
+            return signed_dists, feet
+        return signed_dists
 
     def distances(self, points, with_feet=False):
         """

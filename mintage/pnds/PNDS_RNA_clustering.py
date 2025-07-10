@@ -188,6 +188,8 @@ def __slink_pns(new_clusters, points, scree_data, scree_data_euclid, std_data,
             if p.size == 0:
                 continue
 
+            # Flag to check if any PNS fit was successful for this cluster
+            pns_success = False
             for [invert, mode] in inv_modes:
                 print('SO' if invert else 'SI', mode, flush=True)
                 suffix = ('SO_' if invert else 'SI_') + mode + '_'
@@ -209,6 +211,8 @@ def __slink_pns(new_clusters, points, scree_data, scree_data_euclid, std_data,
                     dist_list.append(None)
                     continue
                     
+                # PNS fit was successful
+                pns_success = True
                 spheres = pns_estimator.spheres_
                 projected_points = pns_estimator.points_
                 distances = pns_estimator.dists_
@@ -328,10 +332,12 @@ def __slink_pns(new_clusters, points, scree_data, scree_data_euclid, std_data,
                     final_clusters.append(c)
             else:
                 print("gaussian modehunting")
-                __slink_plotting(name_gaussplot, "", p, distances, projected_points,
-                               spheres, means, half, c, count,
-                               scree_data, scree_data_euclid,
-                               std_data, scree_labels, False, scale, [])
+                # Only call plotting if PNS was successful at least once
+                if pns_success:
+                    __slink_plotting(name_gaussplot, "", p, distances, projected_points,
+                                   spheres, means, half, c, count,
+                                   scree_data, scree_data_euclid,
+                                   std_data, scree_labels, False, scale, [])
 
                 point_plot = False
                 if point_plot:
@@ -385,8 +391,8 @@ def __slink_pns(new_clusters, points, scree_data, scree_data_euclid, std_data,
                         new_clusters.append(c)
                         final_clusters.append(c)
 
-    print('Clustering done.', len(clusters), 'clusters found.', flush=True)
-    return clusters
+    print('Clustering done.', len(final_clusters), 'clusters found.', flush=True)
+    return final_clusters
 
 # def __slink_pns(
 #     new_clusters,

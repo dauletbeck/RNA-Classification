@@ -237,10 +237,7 @@ class PNSModeHunter:
                 print(f'    WARNING: High residual variance: {current_rel_res_var:.2f}. Checking higher orders.')
                 is_valid_projection = False # Assume invalid until a higher-order check passes
                 # This part is a bit tricky. The original code implicitly declared it valid if this loop passed.
-                # Let's be explicit. A simple check is enough here.
                 # If variance is high, we consider it not valid for mode hunting on the 1D projection.
-            
-            # --- MODIFIED LOGIC: ALWAYS APPEND, BUT INCLUDE VALIDITY FLAG ---
             results.append({
                 "final_distances": pns.dists_[-1],
                 "all_distances": pns.dists_,

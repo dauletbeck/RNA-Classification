@@ -4,3 +4,5 @@ mintage/test_cluster_merging_output/*
 mintage/out/*
 *.png
 *.pkl
+*.pickle
+*.csv

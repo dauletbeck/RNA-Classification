@@ -169,6 +169,10 @@ class Suite:
             phis = [np.arctan2(v[1], v[2])*deg for v in CNs]
             self.low_res_coords = d2_d3 + [alpha, thetas[0], phis[0], thetas[1], phis[1]]
         return self.low_res_coords.copy()
+    
+    #TODO
+    def low_resolution_coordinates_shifted():
+        pass
 
     def get_NCPs(self):
         tmp = self._five_chain

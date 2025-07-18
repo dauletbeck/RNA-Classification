@@ -143,6 +143,9 @@ def large_cluster_separation(cluster, cluster_indices, plot_names="", plot=True)
     if not os.path.exists(plot_folder):
         os.makedirs(plot_folder)
 
+    if plot_names:
+        plot_names = os.path.basename(plot_names)
+        
     # :param min_cluster_size: int, minimal cluster size for mode_hunting
     min_cluster_size = 3
     max_iter = 3
@@ -196,7 +199,7 @@ def large_cluster_separation(cluster, cluster_indices, plot_names="", plot=True)
 
     # 2. Berechnung der quadrierten Abstände von jedem Punkt X_j zu mean_torus im Tangentialraum
     # diagonal of X_j^T (S_tang)^{-1} X_j
-    S_tang_inverse = np.linalg.inv(S_tang)
+    S_tang_inverse = np.linalg.pinv(S_tang)
     distances = np.einsum('nj,jk,nk->n', X_centered, S_tang_inverse, X_centered)
 
     # 3A.
@@ -219,7 +222,7 @@ def large_cluster_separation(cluster, cluster_indices, plot_names="", plot=True)
         # eigenvalues, eigenvectors = np.linalg.eig(S_tang)
         # print(f'eigenvalues S_tang: {eigenvalues}, sqrt: {np.sqrt(eigenvalues)}')
 
-        S_tang_inverse2 = np.linalg.inv(S_tang)
+        S_tang_inverse2 = np.linalg.pinv(S_tang)
         distances2 = np.einsum('nj,jk,nk->n', X_centered_2, S_tang_inverse2, X_centered_2)
         threshold = (3.75 ** 2)
 
@@ -258,7 +261,7 @@ def large_cluster_separation(cluster, cluster_indices, plot_names="", plot=True)
     # since X core does not contain all datapoints, we need a new var for calculation of the distances:
     X_centered_to_core = (cluster - mean_core[np.newaxis, :] +180) % 360 -180
     S_core = np.dot(X_core_centered.T, X_core_centered) / (len(X_core_centered) - 1)
-    S_core_inverse = np.linalg.inv(S_core)
+    S_core_inverse = np.linalg.pinv(S_core)
 
     # 4. Berechnung der quadrierten Abstände von jedem Punkt X_j zu mean_core im Tangentialraum
     distances_core = np.einsum('nj,jk,nk->n', X_centered_to_core, S_core_inverse, X_centered_to_core)

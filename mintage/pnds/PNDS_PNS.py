@@ -213,7 +213,12 @@ class PNS:
                 self.spheres_, self.points_, self.dists_ = None, None, None
                 return self
             list_spheres.append(sph)
-            dists, feet = sph.signed_distances(points, with_feet=True)
+            try:
+                dists, feet = sph.signed_distances(points, with_feet=True)
+            except:
+                print("POINTS", points)
+                print("NORMALS", sph.normals)
+                print("SPHERE CODIM", sph.codim)
             points = sph.project(feet)
             list_points.append(points)
             list_dists.append(dists * DEG)

@@ -90,7 +90,9 @@ class Sphere:
         # return distances * signs
 
         if len(self.normals) > 1:
-            raise NotImplementedError("Signed distances only implemented for codimension 1 (hyperspheres)")
+            # raise NotImplementedError("Signed distances only implemented for codimension 1 (hyperspheres)")
+            print("WARNING CODIM >1 RETURNING UNSIGNED DISTANCES")
+            return self.distances(points, with_feet)
         
         # Get unsigned geodesic distances
         if with_feet:

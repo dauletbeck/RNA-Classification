@@ -15,3 +15,7 @@
 15.05 -- organizational changes, moved to scaling low res to a separate script
 
 03.06 -- updating the rna clustering function, moving forward with the pipeline
+
+...
+
+02.08 -- fixed a big issue with the skewed residuals. The issue was that numpy's implementation of gram schmidt (via QR) yielded a sign flip in the normal.

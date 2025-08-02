@@ -6,3 +6,6 @@ mintage/out/*
 *.pkl
 *.pickle
 *.csv
+*.kin
+RNAprecis/*
+*.pyc

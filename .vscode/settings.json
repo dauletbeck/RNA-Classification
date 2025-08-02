@@ -1,0 +1,5 @@
+{
+    "python.pythonPath": "python",
+    "python.terminal.activateEnvironment": true,
+    "python.pipenvPath": "pipenv"
+}

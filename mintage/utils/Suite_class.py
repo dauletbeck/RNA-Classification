@@ -144,6 +144,7 @@ class Suite:
             deg = 180 / np.pi
             # Center the P atom
             NCPCN = self._five_chain - self._five_chain[2][np.newaxis,:]
+            # print(NCPCN)
             # Get the normal direction to the connecting line between the C atoms
             long = NCPCN[3] - NCPCN[1]
             long = long / np.linalg.norm(long)
@@ -159,6 +160,16 @@ class Suite:
             # Get the rotation matrix that rotates the vector to the x axis
             rot2 = np.array([[long[0], 0, long[2]], [0, 1, 0], [-long[2], 0, long[0]]])
             NCPCN = np.einsum('ij,nj->ni', rot2, NCPCN)
+
+            # print(NCPCN)
+            #TODO
+            # d = NCPCN[3,0] - NCPCN[1,0]
+            # p_x = -NCPCN[1,0]
+            # p_y = NCPCN[1,1]
+            # d_px_py = [NCPCN[3,0] - NCPCN[1,0], -NCPCN[1,0], NCPCN[1,1]] for d2 d3 alpha
+
+            # NCPCN - NCPCN[1]
+
             d2_d3 = [np.linalg.norm(NCPCN[1]), np.linalg.norm(NCPCN[3])]
             alpha = np.arccos(np.dot(NCPCN[1], NCPCN[3]) / (d2_d3[0] * d2_d3[1]))*deg
             CNs = [NCPCN[0] - NCPCN[1], NCPCN[4] - NCPCN[3]]

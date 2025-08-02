@@ -245,6 +245,7 @@ class PNSModeHunter:
                 "suffix": suffix,
                 "is_valid": is_valid_projection
             })
+            
         return results
 
     def _split_with_gaussian_modes(self, valid_distances: List[np.ndarray], cluster_indices: np.ndarray) -> Dict[str, Any]:
@@ -290,13 +291,15 @@ class PNSModeHunter:
             self.dir_residuals, 
             base_plot_name + '_' + best_pns_result['suffix'] + '_best_residuals'
         )
+        mean_dists = [np.mean(x) for x in best_pns_result['all_distances']]
         
         print(f"    Plotting best residuals (mode: {best_pns_result['suffix']}, variance: {best_pns_result['relative_residual_variance']:.3f})")
         residual_plots(
-            data=best_pns_result['all_distances'], scale=None, n=min(4, len(best_pns_result['all_distances'])),
+            data=best_pns_result['all_distances'], scale=None, n=len(best_pns_result['all_distances']),#min(4, len(best_pns_result['all_distances'])),
             colors='blue', rel_residual_variances=best_pns_result['relative_residual_variance'],
             filename=residuals_filename
         )
+        
 
     def _plot_mode_hunting_diagnostics(self, 
                                        base_plot_name: str, cluster_points: np.ndarray, 

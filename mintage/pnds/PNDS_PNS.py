@@ -1,4 +1,4 @@
-# pns.py
+# pns_fixed.py
 
 import numpy as np
 import numpy.linalg as la
@@ -6,8 +6,8 @@ import numpy.random as arandom
 from math import sin, acos, pi as PI, sqrt, log, exp
 import sys
 from scipy.optimize import leastsq, minimize
-from scipy.integrate import quad
 import scipy.stats as stat
+from scipy.integrate import quad
 
 # ==== Required: your own Sphere class ====
 from geometry.hypersphere import Sphere, gram_schmidt, EPS
@@ -19,30 +19,18 @@ DEG = np.degrees(1)
 ################################################################################
 
 def as_matrix(vector):
-    """
-    Reshape a 1D vector to shape (1, len(vector))
-    """
     return np.atleast_2d(vector)
 
 def as_vector(matrix):
-    """
-    Flatten a matrix to 1D vector.
-    """
     return matrix.reshape(-1)
 
 def unfold_points(points, list_spheres):
-    """
-    Unfold points through a list of spheres (inverse of repeated projections).
-    """
     out = points.copy()
     for sphere in reversed(list_spheres):
         out = sphere.unproject(out)
     return out
 
 def fold_points(points, list_spheres):
-    """
-    Fold points through a list of spheres (repeated projections).
-    """
     out = points.copy()
     for sphere in list_spheres:
         out = sphere.project(out)
@@ -51,9 +39,6 @@ def fold_points(points, list_spheres):
 ################################################################################
 
 def circular_mean(points, perimeter=2*PI):
-    """
-    Compute circular mean and variance for 1D angular data.
-    """
     data = 2 * PI * points / perimeter
     mean0 = np.mean(data)
     var0 = np.var(data)
@@ -65,9 +50,6 @@ def circular_mean(points, perimeter=2*PI):
     return tmp
 
 def _variances(mean0, var0, n, points):
-    """
-    Helper for circular_mean.
-    """
     means = (mean0 + np.linspace(0, 2 * PI, n, endpoint=False)) % (2 * PI)
     means[means >= PI] -= 2 * PI
     m_plus = means >= 0
@@ -85,9 +67,6 @@ def _variances(mean0, var0, n, points):
     return np.array(means)
 
 def torus_mean_and_var(data, perimeter=2*PI):
-    """
-    Circular mean and summed variance for columns of a matrix.
-    """
     mean = []
     variance = 0
     for k in range(data.shape[1]):
@@ -97,22 +76,21 @@ def torus_mean_and_var(data, perimeter=2*PI):
     return np.array(mean), variance
 
 def normalization(rho, sigma, d, euclidean=False):
-    """
-    Normalization constant for the likelihood ratio test.
-    """
     def f(r): return (exp(-0.5*(r/sigma-rho)**2) + exp(-0.5*(r/sigma+rho)**2))
     try:
         if not euclidean:
-            return max(sys.float_info.min, quad(lambda r: sin(r)**(d-1) * f(r), 0, PI)[0])
+            return max(sys.float_info.min,
+                       __quad_safe(lambda r: sin(r)**(d-1) * f(r), 0, PI))
         else:
-            return max(sys.float_info.min, quad(lambda r: r**(d-1) * f(r), 0, (20+rho)*sigma)[0])
+            return max(sys.float_info.min,
+                       __quad_safe(lambda r: r**(d-1) * f(r), 0, (20+rho)*sigma))
     except:
         return max(sys.float_info.min, sqrt(2 * PI) * sigma)
 
+def __quad_safe(func, a, b):
+    return quad(func, a, b)[0]
+
 def compare_likelihoods(radii, d, verbose=False, euclidean=False):
-    """
-    Statistical test to determine if a "great" or "small" sphere is preferred.
-    """
     mean = radii.mean()
     std = radii.std()
     def likelihood(x):
@@ -153,39 +131,45 @@ def compare_likelihoods(radii, d, verbose=False, euclidean=False):
     mle_null = minimize(likelihood_null, 1,
                         method='L-BFGS-B',
                         bounds=((mle[1], 10*max(std, mle[1])),)).x
+    
+    likelihood_null_mle_null = likelihood_null(mle_null[0])
+    likelihood_mle = likelihood(mle)
     chi2 = 1 - stat.chi2.cdf(2 * (likelihood_null(mle_null[0]) - likelihood(mle)), 1)
-    if verbose: print("chi2 in likelihood", chi2, "mle", mle, "mle_null", mle_null)
+    if verbose:
+        print("chi2 in likelihood", chi2, "mle", mle, "mle_null", mle_null)
+    
     return chi2 > 0.05
 
 ################################################################################
-#                              Principal Nested Spheres                         #
+#                              Seed / Small sphere helpers                     #
+################################################################################
+
+def new_seed(old, d):
+    """
+    Generate a new direction that is not too close (cosine threshold) to existing ones.
+    """
+    if len(old) == 0:
+        normal = 2 * arandom.rand(d) - 1
+        return normal / la.norm(normal)
+    out = old[0].copy()
+    # ensure angular separation (cosine < 0.7)
+    while np.any(np.abs(np.einsum('i,ji->j', out, old)) > 0.7):
+        out = 2 * arandom.rand(d) - 1
+        norm = la.norm(out)
+        if norm < EPS:
+            out = np.ones(d) / np.sqrt(d)
+        else:
+            out /= norm
+    return out
+
+################################################################################
+#                              Principal Nested Spheres                       #
 ################################################################################
 
 class PNS:
     """
     Principal Nested Spheres (PNS) estimator with statistical model selection.
-
-    Parameters
-    ----------
-    great_until_dim : int
-        Use "great sphere" until this dimension.
-    max_repetitions : int
-        Max attempts for sphere fitting.
-    verbose : bool
-        Print progress.
-    mode : str or None
-        If not None, force "great" or "torus" fitting mode.
-
-    Attributes after fit
-    --------------------
-    spheres_ : list
-        Sequence of fitted Sphere objects (one per nesting step).
-    points_ : list
-        Projected points after each nesting.
-    dists_ : list
-        List of distances at each step.
     """
-
     def __init__(self, great_until_dim=2, max_repetitions=10, verbose=False, mode=None, half=False):
         self.great_until_dim = great_until_dim
         self.max_repetitions = max_repetitions
@@ -194,11 +178,6 @@ class PNS:
         self.half = half
 
     def fit(self, X):
-        """
-        Fit PNS to data matrix X (n_samples, n_features).
-
-        After fit, access spheres_, points_, dists_.
-        """
         points = np.array(X, dtype=np.float64)
         list_spheres = []
         list_points = []
@@ -208,23 +187,32 @@ class PNS:
             orig_points = points.copy()
             dim = points.shape[1]
             this_mode = self._choose_mode(dim)
-            sph = self._get_sphere(points, orig_points, list_spheres, this_mode)
+            sph, current_mode = self._get_sphere(points, orig_points, list_spheres, this_mode)
             if sph is None:
+                if self.verbose:
+                    print(f"Sphere fitting failed at dimension {dim}, terminating PNS")
                 self.spheres_, self.points_, self.dists_ = None, None, None
                 return self
-            list_spheres.append(sph)
+            
+            # Additional robustness check for the fitted sphere
             try:
                 dists, feet = sph.signed_distances(points, with_feet=True)
-            except:
-                print("POINTS", points)
-                print("NORMALS", sph.normals)
-                print("SPHERE CODIM", sph.codim)
-            points = sph.project(feet)
-            list_points.append(points)
-            list_dists.append(dists * DEG)
+                mean_dists = np.mean(dists) * DEG
+                points = sph.project(feet)
+                list_points.append(points)
+                list_dists.append(dists * DEG)
+            except Exception as e:
+                if self.verbose:
+                    print(f"Error processing fitted sphere: {e}")
+                self.spheres_, self.points_, self.dists_ = None, None, None
+                return self
+            
+            list_spheres.append(sph)
+
         if points.shape[1] < 2:
             self.spheres_, self.points_, self.dists_ = None, None, None
             return self
+
         mean, residuals = self._nested_mean(points)
         list_spheres.append(None)
         list_points.append(mean)
@@ -232,113 +220,269 @@ class PNS:
         self.spheres_ = list_spheres
         self.points_ = list_points
         self.dists_ = list_dists
+
         return self
 
     def _choose_mode(self, dim):
-        """
-        Selects the mode for sphere fitting at the current dimension.
-        """
         if self.mode is not None:
             return self.mode
-        return 'great' if dim > self.great_until_dim + 1 else 'torus'
+        # return 'adaptive'
+        return 'great' if dim > self.great_until_dim + 1 else 'adaptive'
+
+    # ------------------ great sphere objective ------------------
+    def _great_sphere_objective(self, x, points):
+        norm_x = la.norm(x)
+        if norm_x < EPS:
+            return np.ones(len(points)) * 1e6
+        normal = x / norm_x
+        sph = Sphere(normal.reshape(1, -1), np.array([0.]))
+        if len(points) == 0:
+            return np.array([])
+        # dists = sph.distances(points)
+        dists = sph.signed_distances(points)
+        # return dists - np.mean(dists)
+        return dists
+    
+    def _fit_great_sphere(self, points):
+        d = points.shape[1]
+        initial = np.mean(points, axis=0)
+        if la.norm(initial) < EPS:
+            initial = 2 * arandom.rand(d) - 1
+        initial = initial / la.norm(initial)
+
+        result = self._fit_least_squares(
+            lambda x: self._great_sphere_objective(x, points),
+            d, initial, small=False
+        )
+        if result is None:
+            return None
+        
+        # Additional robustness check
+        if la.norm(result) < EPS:
+            if self.verbose:
+                print("Great sphere fit resulted in zero norm, trying random initialization")
+            # Try with random initialization
+            initial = 2 * arandom.rand(d) - 1
+            initial = initial / la.norm(initial)
+            result = self._fit_least_squares(
+                lambda x: self._great_sphere_objective(x, points),
+                d, initial, small=False
+            )
+            if result is None or la.norm(result) < EPS:
+                return None
+        
+        normal = result / la.norm(result)
+        return Sphere(normal.reshape(1, -1), np.array([0.]))
+
+    # ------------------ small sphere fitting machinery ------------------
+    def _direction_with_norm_constraint(self, x, points):
+        norm_x = la.norm(x)
+        if norm_x < EPS:
+            angles = np.zeros(points.shape[0])
+        else:
+            angles = np.arcsin(np.einsum('ij,j->i', points, x / norm_x).clip(-1,1))
+        residuals = angles - np.mean(angles)
+        norm_constraint = norm_x - 1
+        return np.hstack((residuals, norm_constraint))
+
+    def _fit_small_sphere(self, points):
+        d = points.shape[1]
+
+        def fit_with_height(f, dim, starts):
+            tmp = self._fit_least_squares(lambda x: f(x, points), dim, starts[-1], small=False)
+            if tmp is None:
+                return None
+            direction = tmp / la.norm(tmp)
+            projections = np.einsum('ij,j->i', points, direction).clip(-1,1)
+            try:
+                height = sin(np.mean(np.arcsin(projections)))
+                # Additional robustness check for height
+                if np.isnan(height) or np.isinf(height):
+                    if self.verbose:
+                        print("Invalid height calculated, skipping this fit")
+                    return None
+            except (ValueError, RuntimeWarning):
+                if self.verbose:
+                    print("Error calculating height, skipping this fit")
+                return None
+            combined = np.hstack((tmp, height))
+            if height < 0:
+                combined = -combined
+            return combined
+
+        def one_small_circle_run(f, dim, starts):
+            out = fit_with_height(f, dim, starts)
+            attempts = 0
+            while out is None and attempts < 10:
+                starts[-1] = new_seed(np.array(starts[:-1]), dim)
+                out = fit_with_height(f, dim, starts)
+                attempts += 1
+            return out
+
+        def small_circle_fit():
+            ext_mean = np.mean(points, axis=0)
+            if la.norm(ext_mean) < EPS:
+                ext_mean = 2 * arandom.rand(d) - 1
+            starts = [ext_mean / la.norm(ext_mean)]
+            results = []
+            scores = []
+
+            first = one_small_circle_run(self._direction_with_norm_constraint, d, starts)
+            if first is None:
+                return None
+            results.append(first)
+            dir_resid = self._direction_with_norm_constraint(first[:-1], points)[:-1]
+            scores.append(np.sum(dir_resid ** 2))
+
+            reruns = min(self.max_repetitions, d + 1)
+            for i in range(reruns):
+                starts.append(new_seed(np.array(starts), d))
+                res = one_small_circle_run(self._direction_with_norm_constraint, d, starts)
+                if res is None:
+                    continue
+                results.append(res)
+                dir_resid = self._direction_with_norm_constraint(res[:-1], points)[:-1]
+                scores.append(np.sum(dir_resid ** 2))
+
+            if len(scores) == 0:
+                return None
+            best = results[int(np.argmin(np.array(scores)))]
+            return best
+
+        combined = small_circle_fit()
+        if combined is None:
+            return None
+        normal = combined[:-1]
+        if la.norm(normal) < EPS:
+            return None
+        normal = normal / la.norm(normal)
+        height = combined[-1]
+        height = np.clip(height, -1, 1)
+        if height < 0:
+            normal = -normal
+            height = -height
+
+        if self.verbose:
+            print(f"Fitted small sphere with height={height:.3f}")
+
+        return Sphere(normal.reshape(1, -1), np.array([height]))
 
     def _get_sphere(self, points, orig_points, list_spheres, mode):
-        """
-        Fit a sphere (great/small) with statistical model selection.
-        """
         N, d = points.shape
 
-        def max_lin_indep(vectors):
-            vectors = np.atleast_2d(vectors)
-            out = []
-            for v in vectors:
-                if la.norm(v) < EPS:
-                    continue
-                if not out:
-                    out.append(v)
-                    continue
-                tmp = np.vstack(out + [v])
-                if la.matrix_rank(tmp, EPS) > len(out):
-                    out.append(v)
-            return np.array(out)
-        N2 = len(max_lin_indep(points))
-        if N < d or N2 < d:
-            tmp = points.copy()
-            tmp = gram_schmidt(tmp)
+        rank = la.matrix_rank(points, EPS)
+        if N < d or rank < d:
+            tmp = gram_schmidt(points)
             n = len(tmp)
+            if self.verbose:
+                print(f'Degenerate case: {N} points in {d}D, rank {rank}. Making S^{n-1}')
             tmp = np.vstack((tmp, 2 * arandom.rand(d - n, d) - 1))
             normals = gram_schmidt(tmp)[n:]
             position = np.zeros(normals.shape[0])
-            return Sphere(normals, position)
-        # --- Standard fitting: try small/great, do likelihood test
-        ext_mean = np.mean(points, axis=0)
-        initial = ext_mean / la.norm(ext_mean)
+            return Sphere(normals, position), "degenerate"
 
-        def f(x):
-            norm_x = la.norm(x)
-            angles = np.arcsin(np.dot(points, x / norm_x).clip(-1, 1))
-            return np.hstack((angles - np.mean(angles), norm_x - 1))
+        if mode == 'great':
+            sphere = self._fit_great_sphere(points)
+            if sphere is None:
+                if self.verbose:
+                    print("Great sphere fit failed, trying small sphere")
+                sphere = self._fit_small_sphere(points)
+                if sphere is None:
+                    if self.verbose:
+                        print("Both great and small sphere fits failed")
+                    return None, "failed"
+                return sphere, "small"
+            return sphere, "great"
+        elif mode == 'small':
+            sphere = self._fit_small_sphere(points)
+            if sphere is None:
+                if self.verbose:
+                    print("Small sphere fit failed, trying great sphere")
+                sphere = self._fit_great_sphere(points)
+                if sphere is None:
+                    if self.verbose:
+                        print("Both small and great sphere fits failed")
+                    return None, "failed"
+                return sphere, "great"
+            return sphere, "small"
+        elif mode == 'adaptive':
+            # Try small sphere first
+            small_sphere = self._fit_small_sphere(points)
+            if small_sphere is None:
+                if self.verbose:
+                    print("Small sphere fit failed in adaptive mode, trying great sphere")
+                great_sphere = self._fit_great_sphere(points)
+                if great_sphere is None:
+                    if self.verbose:
+                        print("Both sphere fits failed in adaptive mode")
+                    return None, "failed"
+                return great_sphere, "great"
 
-        # Small sphere fit
-        result = self._fit_least_squares(f, d, initial)
-        if result is None:
-            return None
-        small_sphere = Sphere(result.reshape(1, -1), np.array([0.]))
+            # Small sphere fit succeeded, now check if we should use it
+            normal = small_sphere.normals[0]
+            height = small_sphere.position[0]
+            projections = np.dot(points, normal)
+            radii = np.arccos(np.abs(projections).clip(0, 1))
+            prefer_great = compare_likelihoods(radii, d-1, verbose=self.verbose)
+            if prefer_great:
+                if self.verbose:
+                    print(f"Statistical test prefers great sphere (height={height:.3f})")
+                great_sphere = self._fit_great_sphere(points)
+                if great_sphere is None:
+                    if self.verbose:
+                        print("Great sphere fit failed after statistical test, using small sphere")
+                    return small_sphere, "small"
+                return great_sphere, "great"
+            else:
+                if self.verbose:
+                    print(f"Statistical test prefers small sphere (height={height:.3f})")
+                return small_sphere, "small"
+        else:
+            return self._get_sphere(points, orig_points, list_spheres, 'adaptive')
 
-        # Optionally: Compare with great sphere using likelihoods
-        # radii = np.arccos(np.abs(np.dot(points, result[:-1] / la.norm(result[:-1]))))
-        radii = np.arccos(np.abs(np.dot(points, result / la.norm(result))))
-        prefer_great = compare_likelihoods(radii, d-1, verbose=self.verbose)
-        if prefer_great:
-            # Fit the great sphere (center at origin, mean direction)
-            initial_great = ext_mean / la.norm(ext_mean)
-            def f_great(x):
-                return np.arcsin(np.dot(points, x / la.norm(x)).clip(-1, 1))
-            great_result = self._fit_least_squares(f_great, d, initial_great, small=False)
-            if great_result is not None:
-                return Sphere(great_result.reshape(1, -1), np.array([0.]))
-        return small_sphere
 
-    def _fit_least_squares(self, f, d, initial, small=True):
-        """
-        Least squares fitting helper, robust against failures.
-        """
+    def _fit_least_squares(self, f, param_dim, initial, small=True):
         tol = 1e-8
         try:
-            initial, exit_code = leastsq(f, initial)
+            result, exit_code = leastsq(f, initial)
         except Exception as e:
-            if self.verbose: print('Exception in fit:', e)
+            if self.verbose:
+                print('Exception in fit:', e)
             exit_code = 6
+            result = initial.copy()
+
         fails = 0
         counter = 0
-        while exit_code > 1 or (small and abs(initial[-1]) > 1):
+
+        while exit_code > 1 or (small and param_dim > len(initial) - 1 and abs(result[-1]) > 1):
             fails += 1
             if fails > 3 or exit_code == 6:
-                initial = 2 * arandom.rand(d) - 1
+                if small and param_dim > len(initial) - 1:
+                    initial = np.hstack([
+                        2 * arandom.rand(param_dim-1) - 1,
+                        0.5 * (2 * arandom.rand() - 1)
+                    ])
+                else:
+                    initial = 2 * arandom.rand(param_dim) - 1
                 fails = 0
             try:
-                initial, exit_code = leastsq(f, initial, ftol=tol, xtol=tol)
+                result, exit_code = leastsq(f, initial, ftol=tol, xtol=tol)
             except Exception as e:
-                if self.verbose: print('Exception in fit:', e)
+                if self.verbose:
+                    print('Exception in fit:', e)
                 exit_code = 6
             if counter > 20:
                 return None
             counter += 1
             tol *= 2
-        if small:
-            initial[:-1] /= la.norm(initial[:-1])
-        else:
-            initial /= la.norm(initial)
-        return initial
+
+        return result
 
     def _nested_mean(self, points_2d):
-        """
-        Compute circular mean and residuals for 2D points.
-        """
         phis = np.arctan2(points_2d[:, 1], points_2d[:, 0])
-        mean = np.arctan2(np.sum(np.sin(phis)), np.sum(np.cos(phis)))
-        residuals = ((phis - mean + PI) % (2*PI) - PI) * DEG
-        return np.array([np.cos(mean), np.sin(mean)]), residuals
+        mean_angle = np.arctan2(np.sum(np.sin(phis)), np.sum(np.cos(phis)))
+        residuals = ((phis - mean_angle + PI) % (2*PI) - PI) * DEG
+        return np.array([np.cos(mean_angle), np.sin(mean_angle)]), residuals
 
 
 if __name__ == '__main__':

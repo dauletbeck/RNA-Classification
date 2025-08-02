@@ -5,33 +5,35 @@ import numpy.linalg as la
 
 EPS = 1e-8
 
-# def gram_schmidt(vectors):
-#     """Orthonormalize the rows of a matrix using Gram-Schmidt."""
-#     vectors = np.atleast_2d(vectors)
-#     n = vectors.shape[0]
-#     out = []
-#     for i in range(n):
-#         vec = vectors[i].copy()
-#         for j in range(i):
-#             vec -= np.dot(out[j], vec) * out[j]
-#         norm = la.norm(vec)
-#         if norm > EPS:
-#             out.append(vec / norm)
-#     return np.vstack(out)
-
 def gram_schmidt(vectors):
-    """Orthonormalize the rows of a matrix using QR decomposition."""
+    """Orthonormalize the rows of a matrix using Gram-Schmidt."""
     vectors = np.atleast_2d(vectors)
-    # Get the rank of the matrix to handle linearly dependent vectors
-    rank = la.matrix_rank(vectors, tol=EPS)
-    if rank == 0:
-        return np.empty((0, vectors.shape[1]), dtype=vectors.dtype)
+    n = vectors.shape[0]
+    out = []
+    for i in range(n):
+        vec = vectors[i].copy()
+        for j in range(i):
+            vec -= np.dot(out[j], vec) * out[j]
+        norm = la.norm(vec)
+        if norm > EPS:
+            out.append(vec / norm)
+    return np.vstack(out)
+
+# def gram_schmidt(vectors):
+#     """Orthonormalize the rows of a matrix using QR decomposition."""
+#     vectors = np.atleast_2d(vectors)
+#     # Get the rank of the matrix to handle linearly dependent vectors
+#     rank = la.matrix_rank(vectors, tol=EPS)
+#     if rank == 0:
+#         return np.empty((0, vectors.shape[1]), dtype=vectors.dtype)
     
-    # Use QR decomposition on the transpose to orthonormalize rows
-    q, r = la.qr(vectors.T)
+#     # Use QR decomposition on the transpose to orthonormalize rows
+#     q, r = la.qr(vectors.T)
     
-    # Return the first 'rank' vectors, transposed back to be row vectors
-    return q[:, :rank].T
+#     # Return the first 'rank' vectors, transposed back to be row vectors
+#     return q[:, :rank].T
+
+# if keeping this track if the signs are corrected (take the inner product of the first output first input, etc, vector)
 
 class Sphere:
     """
@@ -101,12 +103,53 @@ class Sphere:
             dists = self.distances(points, with_feet=False)
         normal = self.normals[0]
         # Compute the sign: dot product with normal minus offset (position)
-        signs = np.sign(np.sum(points * normal, axis=1))
+        signs = np.sign(np.sum(points * normal, axis=1) - self.position)
         signed_dists = dists * signs
         if with_feet:
             return signed_dists, feet
         return signed_dists
 
+    # def signed_distances(self, points, with_feet=False):
+    #     """
+    #     Signed geodesic distances from each point to the subsphere.
+    #     """
+    #     if self.codim > 1:
+    #         print("WARNING: Signed distances only implemented for codim=1")
+    #         return self.distances(points, with_feet)
+        
+    #     # Get unsigned distances
+    #     if with_feet:
+    #         dists, feet = self.distances(points, with_feet=True)
+    #     else:
+    #         dists = self.distances(points, with_feet=False)
+        
+    #     normal = self.normals[0]
+    #     height = self.position[0]
+        
+    #     # Project points onto the normal direction
+    #     projections = np.dot(points, normal)
+        
+    #     # CRITICAL: The sign should indicate which side of the sphere
+    #     # For a sphere centered at height*normal:
+    #     # - If projection > height: point is "outside" (positive distance)
+    #     # - If projection < height: point is "inside" (negative distance)
+        
+    #     # But we need to ensure residuals center around 0
+    #     # So we might need to flip the sign convention
+    #     signs = np.sign(projections - height)
+        
+    #     # Check if we need to flip all signs to center residuals
+    #     signed_dists = dists * signs
+        
+    #     # Diagnostic: if mean is far from 0, we might have the wrong orientation
+    #     mean_signed = np.mean(signed_dists)
+    #     # if abs(mean_signed) > 0.5 * np.mean(dists):
+    #     #     print(f"Warning: Mean signed distance {mean_signed:.2f} is large. Possible orientation issue.")
+        
+    #     if with_feet:
+    #         return signed_dists, feet
+    #     return signed_dists
+    
     def distances(self, points, with_feet=False):
         """
         Geodesic distances from each point to the subsphere.

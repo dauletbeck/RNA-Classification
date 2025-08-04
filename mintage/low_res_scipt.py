@@ -82,7 +82,7 @@ min_size = 3
 scale = 12000
 
 # Where you saved them
-result_dir = '/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/mintage/preclustering_results'
+result_dir = '/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/mintage/preclustering_results/minimal_q_fold_no_outlier'
 
 mode_clusters_res = []
 
@@ -155,7 +155,7 @@ for filename in os.listdir(result_dir):
         print(f"[{name}] mode clusters done: {len(mode_clusters)} clusters")
 
 # You can save final mode_clusters_res if needed
-with open('mode_clusters_results.pkl', 'wb') as f:
+with open('postclustering_results/minimal_q_fold_no_oultlier_postcluster.pkl', 'wb') as f:
     pickle.dump(mode_clusters_res, f)
 
 

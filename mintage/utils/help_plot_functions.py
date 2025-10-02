@@ -621,7 +621,7 @@ def single_corona_plots(best_string, complete_suites_new, counter, mesoscopic_cl
 
 def plots_beginning_correction(input_suites):
     resolution = np.loadtxt('Resolution', dtype=np.str)
-    resolutions = [np.float(resolution[i, 1]) for i in range(resolution.shape[0])]
+    resolutions = [float(resolution[i, 1]) for i in range(resolution.shape[0])]
     hist_own_plot(resolutions, x_label=r'Resolution in $\mathring{A}$', y_label='Number of pdb files',
                   filename='histogram_resolution_all_pdb_files', bins=10, density=False, y_ticks=[0, 5, 10, 15, 20])
     complete_suites = [suite for suite in input_suites if suite.complete_suite]
@@ -637,11 +637,11 @@ def plots_beginning_correction(input_suites):
     for suite in complete_suites:
         for i in range(resolution.shape[0]):
             if suite._filename == resolution[i, 0]:
-                suite.resolution = np.float(resolution[i, 1])
+                suite.resolution = float(resolution[i, 1])
     clashscore_list = np.loadtxt('clashscore_list', dtype=np.str)
     raw_clashscore_list = clashscore_list[1:, 1]
     erraser_clashscore_list = clashscore_list[1:, 2]
-    plot.scatter([np.float(i) for i in raw_clashscore_list], [np.float(i) for i in erraser_clashscore_list],
+    plot.scatter([float(i) for i in raw_clashscore_list], [float(i) for i in erraser_clashscore_list],
                  color='darkgreen')
     plot.plot(np.arange(0, 70), color='grey', lw=0.5)
     plot.xlabel('raw clashscore', fontdict={'size': 15})
@@ -651,10 +651,10 @@ def plots_beginning_correction(input_suites):
     clashscore_list_original = np.loadtxt('clashscore_list_erraser_paper', dtype=np.str)
     raw_clashscore_list_original = clashscore_list_original[1:, 1]
     erraser_clashscore_list_original = clashscore_list_original[1:, 2]
-    plot.scatter([np.float(i) for i in raw_clashscore_list], [np.float(i) for i in erraser_clashscore_list],
+    plot.scatter([float(i) for i in raw_clashscore_list], [float(i) for i in erraser_clashscore_list],
                  label='our pdb files', c='blue')
-    plot.scatter([np.float(i) for i in raw_clashscore_list_original],
-                 [np.float(i) for i in erraser_clashscore_list_original],
+    plot.scatter([float(i) for i in raw_clashscore_list_original],
+                 [float(i) for i in erraser_clashscore_list_original],
                  label='Correcting pervasive errors in rna crystallography through enumerative structure prediction',
                  c='orange')
     plot.plot(np.arange(0, 70))

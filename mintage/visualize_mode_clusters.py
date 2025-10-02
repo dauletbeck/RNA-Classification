@@ -15,7 +15,7 @@ def load_and_visualize_clusters():
     """Load clustering results and create visualizations"""
     
     # Load the post-clustering results
-    with open('/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/mintage/postclustering_results/mode_clusters_results.pkl', 'rb') as f:
+    with open('/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/mintage/postclustering_results/minimal_q_fold_no_oultlier_postcluster.pkl', 'rb') as f:
         mode_clusters_results = pickle.load(f)
     
     # Also load the original data for visualization
@@ -70,7 +70,7 @@ def load_and_visualize_clusters():
         
         if len(mode_clusters) > 0:
             # Create scatter plot
-            filename = f'mode_clusters_{pucker_name}_visualization'
+            filename = f'mode_clusters_{pucker_name}_visualization_min_q_merged'
             
             my_scatter_plots(
                 input_data=sorted_angle_matrix,

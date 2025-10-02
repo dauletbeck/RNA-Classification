@@ -21,6 +21,7 @@ from pnds.PNDS_RNA_clustering import new_multi_slink
 from utils import plot_functions
 from pnds.PNDS_PNS import PNS, unfold_points, as_matrix
 from pnds.PNS_mode_hunter import PNSModeHunter, refine_clusters_with_pns
+from clustering.cluster_merging import cluster_merging
 
 input_pdb_dir = "/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/data/rna2020_pruned_pdbs/"
 suites = parse_pdb_files(input_pdb_dir, input_pdb_folder=input_pdb_dir)
@@ -99,53 +100,102 @@ for filename in os.listdir(result_dir):
 
         print(name)
 
-        # Map to sphere and angles for PNS input
-        d2_s, d3_s, alpha_s, theta1, phi1, theta2, phi2 = scaled_coords_by_pucker.T
+        # NEW WORKFLOW: Apply cluster merging to preclusters FIRST
+        print(f"[{name}] Original preclusters: {len(clusters)} clusters")
+        try:
+            # Step 1: Map to sphere and angles for PNS input (needed for merging)
+            d2_s, d3_s, alpha_s, theta1, phi1, theta2, phi2 = scaled_coords_by_pucker.T
 
-        # TODO run PN_G_S on (theta_i, phi_i), self.dists_ will return residuals, dists_[0] = theta, dists_[1] = phi since we're on S2
-        S2_1 = spherical_to_vec(theta1, phi1)
-        pns_S2_1 = PNS(mode='great', verbose=True).fit(S2_1)
-        theta1, phi1 = pns_S2_1.dists_
+            S2_1 = spherical_to_vec(theta1, phi1)
+            pns_S2_1 = PNS(mode='great', verbose=False).fit(S2_1)
+            theta1, phi1 = pns_S2_1.dists_
 
-        S2_2 = spherical_to_vec(theta2, phi2)
-        pns_S2_2 = PNS(mode='great', verbose=True).fit(S2_2)
-        theta2, phi2 = pns_S2_2.dists_
+            S2_2 = spherical_to_vec(theta2, phi2)
+            pns_S2_2 = PNS(mode='great', verbose=False).fit(S2_2)
+            theta2, phi2 = pns_S2_2.dists_
 
-        # TODO substract the mean from d_i_s 
-        V = np.column_stack([d2_s, d3_s])
-        V -= np.mean(V, axis=0)
+            V = np.column_stack([d2_s, d3_s])
+            V -= np.mean(V, axis=0)
 
-        # TODO run PN_G_S on S2_d (distances)
-        # S2_pts = exponential_map(V, p=np.array([0,0,1]))
-        S2_d = exponential_map(V, p=np.array([0,0,1])) # try this should be better
-        pns_S2_d = PNS(mode='great', verbose=True).fit(S2_d)
-        theta_d, phi_d = pns_S2_d.dists_
+            S2_d = exponential_map(V, p=np.array([0,0,1]))
+            pns_S2_d = PNS(mode='great', verbose=False).fit(S2_d)
+            theta_d, phi_d = pns_S2_d.dists_
 
-        # r = np.linalg.norm(S2_pts, axis=1)
-        # theta_e_deg = np.degrees(np.arccos(np.clip(z/r, -1, 1)))
-        # phi_e_deg = (np.degrees(np.arctan2(y, x)) + 360.0) % 360.0
+            angle_matrix = np.column_stack([
+                theta_d + 180,
+                phi_d + 180,
+                alpha_s,
+                theta1 + 180,
+                phi1 + 180,
+                theta2 + 180,
+                phi2 + 180
+            ])
 
-        # TODO maybe add 180 for plots
-        angle_matrix = np.column_stack([
-            theta_d + 180,
-            phi_d + 180,
-            alpha_s,
-            theta1 + 180,
-            phi1 + 180,
-            theta2 + 180,
-            phi2 + 180
-        ])
-        # if filename == 'c2c2_precluster.pkl':
-        #     break
+            # Step 2: Apply cluster merging to preclusters BEFORE PNS mode hunting
+            print(f"[{name}] Applying cluster merging to preclusters...")
+            merged_preclusters = cluster_merging(
+                cluster_index_lists=clusters,
+                dihedral_angles=angle_matrix,  # Use the 7D angle matrix for merging
+                folder=f'./out/cluster_merging_preclusters/{name}/',
+                circular=True,
+                plot=False  # Set to True if you want diagnostic plots
+            )
+            print(f"[{name}] After merging: {len(merged_preclusters)} clusters")
+            
 
-        # Run PNS-based clustering
-        mode_clusters, _ = refine_clusters_with_pns(
-            scale=scale,
-            data=angle_matrix,
-            cluster_list=clusters,
-            outlier_list=outliers,
-            min_cluster_size=min_size
-        )
+            # Step 3: Run PNS mode hunting on the merged preclusters (no additional merging)
+            print(f"[{name}] Running PNS mode hunting on merged preclusters...")
+            mode_clusters, _ = refine_clusters_with_pns(
+                scale=scale,
+                data=angle_matrix,
+                cluster_list=merged_preclusters,  # Use merged preclusters instead of original
+                outlier_list=outliers,
+                min_cluster_size=min_size,
+                enable_cluster_merging=False,  # Disable additional merging since we already merged
+                merging_plot=False
+            )
+
+        except Exception as e:
+            print(f"[{name}] Error in new pipeline: {e}")
+            print(f"[{name}] Falling back to original pipeline...")
+
+            # Fallback to original pipeline if there's an error
+            d2_s, d3_s, alpha_s, theta1, phi1, theta2, phi2 = scaled_coords_by_pucker.T
+
+            S2_1 = spherical_to_vec(theta1, phi1)
+            pns_S2_1 = PNS(mode='great', verbose=True).fit(S2_1)
+            theta1, phi1 = pns_S2_1.dists_
+
+            S2_2 = spherical_to_vec(theta2, phi2)
+            pns_S2_2 = PNS(mode='great', verbose=True).fit(S2_2)
+            theta2, phi2 = pns_S2_2.dists_
+
+            V = np.column_stack([d2_s, d3_s])
+            V -= np.mean(V, axis=0)
+
+            S2_d = exponential_map(V, p=np.array([0,0,1]))
+            pns_S2_d = PNS(mode='great', verbose=True).fit(S2_d)
+            theta_d, phi_d = pns_S2_d.dists_
+
+            angle_matrix = np.column_stack([
+                theta_d + 180,
+                phi_d + 180,
+                alpha_s,
+                theta1 + 180,
+                phi1 + 180,
+                theta2 + 180,
+                phi2 + 180
+            ])
+
+            mode_clusters, _ = refine_clusters_with_pns(
+                scale=scale,
+                data=angle_matrix,
+                cluster_list=clusters,
+                outlier_list=outliers,
+                min_cluster_size=min_size,
+                enable_cluster_merging=True,
+                merging_plot=False
+            )
 
         mode_clusters_res.append({
             'name': name,
@@ -154,9 +204,18 @@ for filename in os.listdir(result_dir):
 
         print(f"[{name}] mode clusters done: {len(mode_clusters)} clusters")
 
-# You can save final mode_clusters_res if needed
-with open('postclustering_results/minimal_q_fold_no_oultlier_postcluster.pkl', 'wb') as f:
+# Create output directory if it doesn't exist
+import os
+os.makedirs('postclustering_results', exist_ok=True)
+
+# Save final mode_clusters_res with new filename to distinguish from old pipeline
+with open('postclustering_results/minimal_q_fold_no_outlier_premerged_postcluster.pkl', 'wb') as f:
     pickle.dump(mode_clusters_res, f)
+
+print(f"\nPipeline completed! Results saved to: postclustering_results/minimal_q_fold_no_outlier_premerged_postcluster.pkl")
+print("Summary:")
+for result in mode_clusters_res:
+    print(f"  {result['name']}: {len(result['mode_clusters'])} final clusters")
 
 
 

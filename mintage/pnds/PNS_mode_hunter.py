@@ -36,6 +36,7 @@ import numpy.linalg as la
 
 # Local/custom imports
 from clustering.cluster_improving import large_cluster_separation
+from clustering.cluster_merging import cluster_merging
 from clustering.gaussian_modehunting import modehunting_gaussian, mode_test_gaussian
 from multiscale_analysis.Multiscale_modes import get_quantile, get_modes
 from pnds.PNDS_geometry import RESHify_1D, unRESHify_1D, torus_distances, euclideanize
@@ -97,7 +98,9 @@ class PNSModeHunter:
                  scale: float,
                  min_cluster_size: int = 2,
                  old_modehunting: bool = False,
-                 cluster_separation_fallback: bool = True):
+                 cluster_separation_fallback: bool = True,
+                 enable_cluster_merging: bool = False,
+                 merging_plot: bool = False):
         """
         Initializes the PNSModeHunter.
         """
@@ -108,16 +111,20 @@ class PNSModeHunter:
         self.min_cluster_size = min_cluster_size
         self.old_modehunting = old_modehunting
         self.cluster_separation_fallback = cluster_separation_fallback
+        self.enable_cluster_merging = enable_cluster_merging
+        self.merging_plot = merging_plot
 
         # Output configuration with separate folders for each plot type
         self.dir_projections = "./out/projections/"
         self.dir_residuals = "./out/residuals/"
         self.dir_gauss = "./out/gaussian_modehunting/"
         self.dir_separation = "./out/cluster_separation/"
+        self.dir_merging = "./out/cluster_merging/"
         os.makedirs(self.dir_projections, exist_ok=True)
         os.makedirs(self.dir_residuals, exist_ok=True)
         os.makedirs(self.dir_gauss, exist_ok=True)
         os.makedirs(self.dir_separation, exist_ok=True)
+        os.makedirs(self.dir_merging, exist_ok=True)
         
         # Internal state
         self.clusters_to_process: List[np.ndarray] = []
@@ -157,6 +164,14 @@ class PNSModeHunter:
                 break
 
         print(f"Clustering done. {len(self.final_clusters)} final clusters found.")
+
+        # Optional cluster merging step
+        if self.enable_cluster_merging:
+            print("Running cluster merging...")
+            merged_clusters = self._apply_cluster_merging(self.final_clusters)
+            print(f"After merging: {len(merged_clusters)} clusters.")
+            return merged_clusters
+
         return self.final_clusters
 
     def _process_cluster(self, cluster_indices: np.ndarray, pass_index: int) -> List[np.ndarray]:
@@ -349,6 +364,30 @@ class PNSModeHunter:
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         plt.savefig(filename); plt.close()
 
+    def _apply_cluster_merging(self, clusters: List[np.ndarray]) -> List[np.ndarray]:
+        """
+        Applies cluster merging to the final clusters using the cluster_merging function.
+
+        Args:
+            clusters: List of cluster indices arrays
+
+        Returns:
+            List of merged cluster indices arrays
+        """
+        try:
+            merged_clusters = cluster_merging(
+                cluster_index_lists=clusters,
+                dihedral_angles=self.points[:, :7],  # Only use dihedral angles (first 7 dimensions)
+                folder=self.dir_merging,
+                circular=True,
+                plot=self.merging_plot
+            )
+            return merged_clusters
+        except Exception as e:
+            print(f"    Warning: Cluster merging failed with error: {e}")
+            print("    Returning original clusters without merging.")
+            return clusters
+
     def _fallback_to_large_cluster_separation(self, cluster_indices, cluster_points, base_name):
         """Last resort separation for clusters where PNS fails."""
         if self.cluster_separation_fallback and len(cluster_indices) > self.min_cluster_size:
@@ -376,10 +415,12 @@ class PNSModeHunter:
 # Main Entry Point Function
 ################################################################################
 
-def refine_clusters_with_pns(scale: float, data: Optional[np.ndarray] = None, 
-                             cluster_list: Optional[List[np.ndarray]] = None, 
-                             outlier_list: Optional[list] = None, 
-                             min_cluster_size: int = 2):
+def refine_clusters_with_pns(scale: float, data: Optional[np.ndarray] = None,
+                             cluster_list: Optional[List[np.ndarray]] = None,
+                             outlier_list: Optional[list] = None,
+                             min_cluster_size: int = 2,
+                             enable_cluster_merging: bool = False,
+                             merging_plot: bool = False):
     """Main entry point for refining pre-existing clusters using PNS-based mode hunting."""
     if data is None: points = import_csv(find_files('RNA_data_richardson.csv')[0])['PDB-Data']
     else: points = data
@@ -392,7 +433,9 @@ def refine_clusters_with_pns(scale: float, data: Optional[np.ndarray] = None,
     print('Starting PNS-based cluster refinement...')
     hunter = PNSModeHunter(
         points=points, initial_clusters=clusters, type_name='filtered',
-        scale=scale, min_cluster_size=min_cluster_size
+        scale=scale, min_cluster_size=min_cluster_size,
+        enable_cluster_merging=enable_cluster_merging,
+        merging_plot=merging_plot
     )
     final_clusters = hunter.run()
     

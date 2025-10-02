@@ -19,3 +19,5 @@
 ...
 
 02.08 -- fixed a big issue with the skewed residuals. The issue was that numpy's implementation of gram schmidt (via QR) yielded a sign flip in the normal.
+
+02.10 -- done a lot of experiments with clustering, testing different q-folds, improving statistical testing, fixing minor issues.

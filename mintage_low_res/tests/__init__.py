@@ -1,1 +1,0 @@
-"""Test suite for mintage_low_res package."""

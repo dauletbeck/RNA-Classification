@@ -131,16 +131,16 @@ for filename in os.listdir(result_dir):
                 phi2 + 180
             ])
 
-            # Step 2: Apply cluster merging to preclusters BEFORE PNS mode hunting
-            print(f"[{name}] Applying cluster merging to preclusters...")
-            merged_preclusters = cluster_merging(
-                cluster_index_lists=clusters,
-                dihedral_angles=angle_matrix,  # Use the 7D angle matrix for merging
-                folder=f'./out/cluster_merging_preclusters/{name}/',
-                circular=True,
-                plot=False  # Set to True if you want diagnostic plots
-            )
-            print(f"[{name}] After merging: {len(merged_preclusters)} clusters")
+            # # Step 2: Apply cluster merging to preclusters BEFORE PNS mode hunting
+            # print(f"[{name}] Applying cluster merging to preclusters...")
+            # merged_preclusters = cluster_merging(
+            #     cluster_index_lists=clusters,
+            #     dihedral_angles=angle_matrix,  # Use the 7D angle matrix for merging
+            #     folder=f'./out/cluster_merging_preclusters/{name}/',
+            #     circular=True,
+            #     plot=True  # Set to True if you want diagnostic plots
+            # )
+            # print(f"[{name}] After merging: {len(merged_preclusters)} clusters")
             
 
             # Step 3: Run PNS mode hunting on the merged preclusters (no additional merging)
@@ -152,7 +152,7 @@ for filename in os.listdir(result_dir):
                 outlier_list=outliers,
                 min_cluster_size=min_size,
                 enable_cluster_merging=False,  # Disable additional merging since we already merged
-                merging_plot=False
+                merging_plot=True
             )
 
         except Exception as e:
@@ -209,10 +209,10 @@ import os
 os.makedirs('postclustering_results', exist_ok=True)
 
 # Save final mode_clusters_res with new filename to distinguish from old pipeline
-with open('postclustering_results/minimal_q_fold_no_outlier_premerged_postcluster.pkl', 'wb') as f:
+with open('postclustering_results/no_cluster_sep_no_premerge.pkl', 'wb') as f:
     pickle.dump(mode_clusters_res, f)
 
-print(f"\nPipeline completed! Results saved to: postclustering_results/minimal_q_fold_no_outlier_premerged_postcluster.pkl")
+print(f"\nPipeline completed! Results saved to: postclustering_results/no_cluster_sep_no_premerge.pkl")
 print("Summary:")
 for result in mode_clusters_res:
     print(f"  {result['name']}: {len(result['mode_clusters'])} final clusters")

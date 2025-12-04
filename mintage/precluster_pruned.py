@@ -52,6 +52,7 @@ def cluster_pruned_rna(
 
     # Load and filter suites
     suites = get_suites_from_pdb()
+
     filtered = [s for s in suites
                 if s.procrustes_five_chain_vector is not None
                 and s.dihedral_angles is not None

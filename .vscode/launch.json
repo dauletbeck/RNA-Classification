@@ -11,12 +11,6 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
-        },
-        {
-            "name": "Python Debugger: Python File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}"
         }
     ]
 }

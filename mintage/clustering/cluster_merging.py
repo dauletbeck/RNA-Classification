@@ -21,6 +21,30 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 """
 
+# try K = 5, run different values 
+# if ((compare_c1_s0 >= 0.75 * len(cluster1)) and
+# (compare_c2_s1 >= 0.75 * len(cluster2)) and
+# (compare_c2_s0 <= K * compare_c1_s0) and
+# (compare_c1_s1 <= K * compare_c2_s1)):
+# divided = True
+# # cluster 2 is in left branch and cluster 1 in right
+# elif ((compare_c1_s1 >= 0.75 * len(cluster1)) and
+# (compare_c2_s0 >= 0.75 * len(cluster2)) and
+# (compare_c1_s0 <= K * compare_c2_s0) and
+# (compare_c2_s1 <= K * compare_c1_s1)):
+# divided = True
+# # if we have very sparse cluster: Test if sparse cluster is 75% in tree-remnant
+# elif ((compare_c1_rem >= 0.75 * len(cluster1)) and
+# (compare_c2_s0 + compare_c2_s1 >= 0.75 * len(cluster2)) and
+# (compare_c2_rem <= K * compare_c1_rem) and
+# (compare_c1_s0 + compare_c1_s1 <= K * (compare_c2_s0 + compare_c2_s1))):
+# divided = True
+# elif ((compare_c2_rem >= 0.75 * len(cluster2)) and
+# (compare_c1_s0 + compare_c1_s1 >= 0.75 * len(cluster1)) and
+# (compare_c1_rem <= K * compare_c2_rem) and
+# (compare_c2_s0 + compare_c2_s1 <= K * (compare_c1_s0 + compare_c1_s1))):
+# divided = True
+
 
 import os
 
@@ -36,7 +60,7 @@ from pnds.PNDS_PNS import torus_mean_and_var
 
 def distance_matrix(data, distance='torus'):
     """This function calculates a distance vector that can be used by scipy.cluster.hierarchy's agglomerative clustering
-      algorithms. Depending on the string 'distance', a distance matrix is calculated.
+     algorithms. Depending on the string 'distance', a distance matrix is calculated.
     :param data: The data matrix (number of points) x (number of dimensions).
     :param distance: A string from ['torus', 'sphere'].
     :return: A distance vector with the length(number of shapes)*(number of shapes-1)/2.
@@ -45,6 +69,7 @@ def distance_matrix(data, distance='torus'):
         sum_dihedral_differences = np.zeros(int(data.shape[0] * (data.shape[0] - 1) / 2))
         for i in range(data.shape[1]):
             diff_one_dim = pdist(data[:, i].reshape((data.shape[0], 1)))
+            # diff_one_dim = np.min((2*np.pi - diff_one_dim, diff_one_dim), axis=0) ** 2
             diff_one_dim = np.min((360 - diff_one_dim, diff_one_dim), axis=0) ** 2
             sum_dihedral_differences = sum_dihedral_differences + diff_one_dim
         return np.sqrt(sum_dihedral_differences)
@@ -52,6 +77,42 @@ def distance_matrix(data, distance='torus'):
         return np.arccos(1 - pdist(data, 'cosine'))
     if distance == 'euclidean':
         return pdist(data, 'euclidean')
+    if distance == 'low_res_suite_shape':
+        return pdist(data, d_low_res_suite_shape)
+
+def d_low_res_suite_shape(x, y):
+    """
+    A distance function for the low resolution suite shape.
+    Notation is according to the paper.
+    :param x: A vector with the first shape.
+    :param y: A vector with the second shape.
+    :return: The distance between the two shapes.
+    """
+    d_2_x, d_3_x, alpha_x, theta_1_x, phi_1_x, theta_2_x, phi_2_x = x
+    d_2_y, d_3_y, alpha_y, theta_1_y, phi_1_y, theta_2_y, phi_2_y = y
+
+    # angles to radians
+    alpha_x = np.deg2rad(alpha_x)
+    alpha_y = np.deg2rad(alpha_y)
+
+    theta_1_x = np.deg2rad(theta_1_x)
+    theta_1_y = np.deg2rad(theta_1_y)
+    phi_1_x = np.deg2rad(phi_1_x)
+    phi_1_y = np.deg2rad(phi_1_y)
+    theta_2_x = np.deg2rad(theta_2_x)
+    theta_2_y = np.deg2rad(theta_2_y)
+    phi_2_x = np.deg2rad(phi_2_x)
+    phi_2_y = np.deg2rad(phi_2_y)
+    
+    # d_d2, d_d3, d_alpha are euclidean distances
+    d_d2 = d_2_x - d_2_y
+    d_d3 = d_3_x - d_3_y
+    d_alpha = alpha_x - alpha_y
+    # d_theta_1, d_phi_1, d_theta_2, d_phi_2 are spherical distances. Expansion is based on computing the dot product of vectors (sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta)).
+    # sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta)
+    d_s1 = np.arccos(np.sin(theta_1_x) * np.sin(theta_1_y) * np.cos(phi_1_x - phi_1_y) + np.cos(theta_1_x) * np.cos(theta_1_y))
+    d_s2 = np.arccos(np.sin(theta_2_x) * np.sin(theta_2_y) * np.cos(phi_2_x - phi_2_y) + np.cos(theta_2_x) * np.cos(theta_2_y))
+    return np.sqrt(d_d2 ** 2 + d_d3 ** 2 + d_alpha ** 2 + d_s1 ** 2 + d_s2 ** 2)
 
 """
 Step 1:
@@ -110,7 +171,8 @@ def cluster_merging(cluster_index_lists, dihedral_angles, folder, circular=False
             if circular:
                 cluster_point_dists = [torus_distances(p1, cluster_list[j]) for p1 in cluster_list[i]]
             else:
-                cluster_point_dists = [cluster_distances(p1, cluster_list[j]) for p1 in cluster_list[i]]
+                # cluster_point_dists = [cluster_distances(p1, cluster_list[j]) for p1 in cluster_list[i]]
+                cluster_point_dists = [d_low_res_suite_shape(p1, cluster_list[j]) for p1 in cluster_list[i]]
             d_min = min([min(cluster_point_dists[l]) for l in range(0, len(cluster_point_dists))])
             print(f'{max([max(cluster_point_dists[l]) for l in range(0, len(cluster_point_dists))])}')
 
@@ -125,7 +187,8 @@ def cluster_merging(cluster_index_lists, dihedral_angles, folder, circular=False
                 if circular:
                     pairdist = distance_matrix(np.vstack([cluster1, cluster2]))
                 else:
-                    pairdist = distance_matrix(np.vstack([cluster1, cluster2]), 'euclidean')
+                    # pairdist = distance_matrix(np.vstack([cluster1, cluster2]), 'euclidean')
+                    pairdist = distance_matrix(np.vstack([cluster1, cluster2]), 'low_res_suite_shape')
                 linkage_matrix = single(pairdist)  # dendrogram
                 if plot:
                     dn = dendrogram(linkage_matrix)
@@ -194,18 +257,30 @@ def cluster_merging(cluster_index_lists, dihedral_angles, folder, circular=False
                     compare_c2_rem = len([i for i in remnant_branch for j in c2_index_list_converted if i == j])
 
                     divided = False
+                    K = 5  # ratio tolerance between branch populations
+
                     # cluster 1 is in left branch and cluster 2 in right
-                    if (compare_c1_s0 >= 0.75 * len(cluster1)) and (compare_c2_s1 >= 0.75 * len(cluster2)):
+                    if ((compare_c1_s0 >= 0.75 * len(cluster1)) and
+                        (compare_c2_s1 >= 0.75 * len(cluster2)) and
+                        (compare_c2_s0 <= K * compare_c1_s0) and
+                        (compare_c1_s1 <= K * compare_c2_s1)):
                         divided = True
                     # cluster 2 is in left branch and cluster 1 in right
-                    elif (compare_c1_s1 >= 0.75 * len(cluster1)) and (compare_c2_s0 >= 0.75 * len(cluster2)):
+                    elif ((compare_c1_s1 >= 0.75 * len(cluster1)) and
+                          (compare_c2_s0 >= 0.75 * len(cluster2)) and
+                          (compare_c1_s0 <= K * compare_c2_s0) and
+                          (compare_c2_s1 <= K * compare_c1_s1)):
                         divided = True
                     # if we have very sparse cluster: Test if sparse cluster is 75% in tree-remnant
-                    elif (compare_c1_rem >= 0.75 * len(cluster1)) and (
-                            compare_c2_s0 + compare_c2_s1 >= 0.75 * len(cluster2)):
+                    elif ((compare_c1_rem >= 0.75 * len(cluster1)) and
+                          (compare_c2_s0 + compare_c2_s1 >= 0.75 * len(cluster2)) and
+                          (compare_c2_rem <= K * compare_c1_rem) and
+                          (compare_c1_s0 + compare_c1_s1 <= K * (compare_c2_s0 + compare_c2_s1))):
                         divided = True
-                    elif (compare_c2_rem >= 0.75 * len(cluster2)) and (
-                            compare_c1_s0 + compare_c1_s1 >= 0.75 * len(cluster1)):
+                    elif ((compare_c2_rem >= 0.75 * len(cluster2)) and
+                          (compare_c1_s0 + compare_c1_s1 >= 0.75 * len(cluster1)) and
+                          (compare_c1_rem <= K * compare_c2_rem) and
+                          (compare_c2_s0 + compare_c2_s1 <= K * (compare_c1_s0 + compare_c1_s1))):
                         divided = True
 
                     if not divided:

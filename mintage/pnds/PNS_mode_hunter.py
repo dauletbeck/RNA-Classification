@@ -238,24 +238,35 @@ class PNSModeHunter:
                 print(f"    PNS fit failed for this mode.")
                 continue
 
-            center_point = unRESHify_1D(unfold_points(as_matrix(pns.points_[-1]), pns.spheres_[:-1]), means, half)
-            unfolded_1d = unRESHify_1D(unfold_points(pns.points_[-2], pns.spheres_[:-1]), means, half)
+            spheres = pns.spheres_
+            projected_points = pns.points_
+            distances = pns.dists_
+
+            center_point = unRESHify_1D(unfold_points(as_matrix(projected_points[-1]), spheres[:-1]), means, half)
+            unfolded_1d = unRESHify_1D(unfold_points(projected_points[-2], spheres[:-1]), means, half)
             total_variance = np.mean(torus_distances(center_point, cluster_points[:, :7]) ** 2)
             if total_variance == 0: continue
-            
+
             relative_residual_variance = np.mean(torus_distances(unfolded_1d, cluster_points[:, :7]) ** 2) / total_variance
-            
-            # Perform the validity test
+
+            # Mirror the legacy "mode_hunting" guard: only accept the distances
+            # when the unimodal test deems them usable.
             is_valid_projection = True
-            current_rel_res_var = relative_residual_variance
-            if current_rel_res_var > 0.25:
-                print(f'    WARNING: High residual variance: {current_rel_res_var:.2f}. Checking higher orders.')
-                is_valid_projection = False # Assume invalid until a higher-order check passes
-                # This part is a bit tricky. The original code implicitly declared it valid if this loop passed.
-                # If variance is high, we consider it not valid for mode hunting on the 1D projection.
+            order = 1
+            while relative_residual_variance > 0.25:
+                print(f'    WARNING: High residual variance: {relative_residual_variance:.2f} in mode {suffix}.')
+                order += 1
+                if order >= min(len(distances), 7):
+                    is_valid_projection = False
+                    break
+                modes = mode_test_gaussian(distances[-order], 0.05)
+                if modes == 2:
+                    is_valid_projection = False
+                    break
+
             results.append({
-                "final_distances": pns.dists_[-1],
-                "all_distances": pns.dists_,
+                "final_distances": distances[-1] if is_valid_projection else None,
+                "all_distances": distances,
                 "relative_residual_variance": relative_residual_variance,
                 "suffix": suffix,
                 "is_valid": is_valid_projection
@@ -379,7 +390,7 @@ class PNSModeHunter:
                 cluster_index_lists=clusters,
                 dihedral_angles=self.points[:, :7],  # Only use dihedral angles (first 7 dimensions)
                 folder=self.dir_merging,
-                circular=True,
+                circular=False, # currently set to low res distance for false
                 plot=self.merging_plot
             )
             return merged_clusters

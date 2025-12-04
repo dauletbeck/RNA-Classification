@@ -275,7 +275,10 @@ class PNS:
         return Sphere(normal.reshape(1, -1), np.array([0.]))
 
     # ------------------ small sphere fitting machinery ------------------
-    def _direction_with_norm_constraint(self, x, points):
+    def _small_sphere_objective(self, x, points):
+        """
+        Direction with norm constraint.
+        """
         norm_x = la.norm(x)
         if norm_x < EPS:
             angles = np.zeros(points.shape[0])
@@ -327,21 +330,21 @@ class PNS:
             results = []
             scores = []
 
-            first = one_small_circle_run(self._direction_with_norm_constraint, d, starts)
+            first = one_small_circle_run(self._small_sphere_objective, d, starts)
             if first is None:
                 return None
             results.append(first)
-            dir_resid = self._direction_with_norm_constraint(first[:-1], points)[:-1]
+            dir_resid = self._small_sphere_objective(first[:-1], points)[:-1]
             scores.append(np.sum(dir_resid ** 2))
 
             reruns = min(self.max_repetitions, d + 1)
             for i in range(reruns):
                 starts.append(new_seed(np.array(starts), d))
-                res = one_small_circle_run(self._direction_with_norm_constraint, d, starts)
+                res = one_small_circle_run(self._small_sphere_objective, d, starts)
                 if res is None:
                     continue
                 results.append(res)
-                dir_resid = self._direction_with_norm_constraint(res[:-1], points)[:-1]
+                dir_resid = self._small_sphere_objective(res[:-1], points)[:-1]
                 scores.append(np.sum(dir_resid ** 2))
 
             if len(scores) == 0:

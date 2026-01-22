@@ -23,6 +23,7 @@ class Suite:
         self._five_chain = np.array(five_chain) # N-C-P-C-N
         self._six_chain = np.array(six_chain)
         self._seven_chain = np.array(seven_chain)
+        self.richardson_class = None
 
         # The hydrogen atoms which have an atomic bond with the ring atoms.
         self._ring_hydrogen_atoms = np.array(ring_hydrogen_atoms)

@@ -653,9 +653,13 @@ def branch_cutting(cluster_tree, cluster_points, s_p, q_fold):
                 smaller_cluster = second_value
                 bigger_cluster = first_value
             help_list_tuple = help_list_tuple + [[smaller_cluster, bigger_cluster]]
-            if int(cluster_tree[smaller_cluster, 3]) > s_p and (
-                    (1 - cluster_tree[bigger_cluster, 2] / cluster_tree[biggest_cluster_point, 2] > q_fold) and (
-                    1 - cluster_tree[smaller_cluster, 2] / cluster_tree[biggest_cluster_point, 2] > q_fold)):
+            big_skip = 1 - cluster_tree[bigger_cluster, 2] / cluster_tree[biggest_cluster_point, 2]
+            small_skip = 1 - cluster_tree[smaller_cluster, 2] / cluster_tree[biggest_cluster_point, 2]
+            if int(cluster_tree[smaller_cluster, 3]) > s_p and (big_skip * small_skip > q_fold**2):
+                #(
+                    # (1 - cluster_tree[bigger_cluster, 2] / cluster_tree[biggest_cluster_point, 2] > q_fold) and (
+                    # 1 - cluster_tree[smaller_cluster, 2] / cluster_tree[biggest_cluster_point, 2] > q_fold)):
+                    
                 help_list = help_list + [smaller_cluster]
             biggest_cluster_point = bigger_cluster
         else:

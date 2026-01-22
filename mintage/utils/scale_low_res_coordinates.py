@@ -42,8 +42,8 @@ def scale_low_res_coords(
     var_b2 = np.mean(np.sum((vec2 - vec2.mean(axis=0))**2, axis=1))
 
     # 2) the “target” variances from your supervisor’s formula
-    v_d_target = (var_b1 + var_b2)/3
-    v_a_target = (var_b1 + var_b2)/6
+    v_d_target = (var_b1 + var_b2)/2
+    v_a_target = (var_b1 + var_b2)/4
 
     # 3) raw scale‐factors
     lambda_d     = np.sqrt(v_d_target / var_d)

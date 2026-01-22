@@ -35,6 +35,11 @@ for pucker in puckers:
 pucker_indices = {k: np.asarray(v, dtype=np.intp)   
                   for k, v in pucker_indices.items()}
 
+# save pucker indices
+with open('postclustering_results/pucker_indices.pkl', 'wb') as f:
+    pickle.dump(pucker_indices, f)
+
+
 def spherical_to_vec(theta_deg: np.ndarray, phi_deg: np.ndarray) -> np.ndarray:
     t, p = np.radians(theta_deg), np.radians(phi_deg)
     return np.column_stack([np.sin(t) * np.cos(p),
@@ -67,23 +72,23 @@ def exponential_map(V, p):
 #     rest_basis = gram_schmidt(np.vstack[p, np.eye(d)[:-1]]))[1:]
 
 # scale only the distance‐variance, leave α‐variance and both means alone
-scaled_coords, lambda_d, lambda_alpha = scale_low_res_coords(
-    suites,
-    scale_distance_variance=True,
-    scale_alpha_variance=False,
-    preserve_distance_mean=True,
-    preserve_alpha_mean=True,
-    store_attr="scaled_dvar_only"
-)
+# scaled_coords, lambda_d, lambda_alpha = scale_low_res_coords(
+#     suites,
+#     scale_distance_variance=True,
+#     scale_alpha_variance=False,
+#     preserve_distance_mean=True,
+#     preserve_alpha_mean=True,
+#     store_attr="scaled_dvar_only"
+# )
 
-d2_s, d3_s, alpha_s, theta1, phi1, theta2, phi2 = scaled_coords.T
-N = len(d2_s)
+# d2_s, d3_s, alpha_s, theta1, phi1, theta2, phi2 = scaled_coords.T
+# N = len(d2_s)
 
 min_size = 3
 scale = 12000
 
 # Where you saved them
-result_dir = '/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/mintage/preclustering_results/minimal_q_fold_no_outlier'
+result_dir = '/Users/kaisardauletbek/Documents/GitHub/RNA-Classification/mintage/preclustering_results/qfold_product/average_linkage'
 
 mode_clusters_res = []
 
@@ -148,7 +153,7 @@ for filename in os.listdir(result_dir):
             mode_clusters, _ = refine_clusters_with_pns(
                 scale=scale,
                 data=angle_matrix,
-                cluster_list=merged_preclusters,  # Use merged preclusters instead of original
+                cluster_list=clusters,  # Use merged preclusters instead of original
                 outlier_list=outliers,
                 min_cluster_size=min_size,
                 enable_cluster_merging=False,  # Disable additional merging since we already merged
@@ -199,24 +204,27 @@ for filename in os.listdir(result_dir):
 
         mode_clusters_res.append({
             'name': name,
-            'mode_clusters': mode_clusters
+            # Preserve the local (pucker-only) indices for debugging.
+            # 'mode_clusters_local': mode_clusters,
+            # Map clusters back to the original dataset indices so they no longer start at 0.
+            'mode_clusters': [
+                pucker_indices[name][np.asarray(cluster, dtype=np.intp)]
+                if name in pucker_indices else cluster
+                for cluster in mode_clusters
+            ]
         })
 
-        print(f"[{name}] mode clusters done: {len(mode_clusters)} clusters")
+        print(f"[{name}] mode clusters done: {len(mode_clusters)} clusters (mapped to dataset indices)")
 
 # Create output directory if it doesn't exist
 import os
 os.makedirs('postclustering_results', exist_ok=True)
 
 # Save final mode_clusters_res with new filename to distinguish from old pipeline
-with open('postclustering_results/no_cluster_sep_no_premerge.pkl', 'wb') as f:
+with open('postclustering_results/average_linkage_scaling_updated.pkl', 'wb') as f:
     pickle.dump(mode_clusters_res, f)
 
-print(f"\nPipeline completed! Results saved to: postclustering_results/no_cluster_sep_no_premerge.pkl")
+print(f"\nPipeline completed! Results saved to: postclustering_results/average_linkage_scaling_updated.pkl")
 print("Summary:")
 for result in mode_clusters_res:
     print(f"  {result['name']}: {len(result['mode_clusters'])} final clusters")
-
-
-
-
